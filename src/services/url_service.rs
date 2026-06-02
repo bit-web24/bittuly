@@ -1,11 +1,11 @@
-use crate::{db::postgres::DbPool, repository::url_repository};
+use crate::{db::postgres::DbPool, models::Url, repository::url_repository};
 use uuid::Uuid;
 
 pub async fn shorten_url(
     db: &DbPool,
     original_url: &str,
     user_id: Uuid,
-) -> Result<String, sqlx::Error> {
+) -> Result<Url, sqlx::Error> {
     url_repository::add_shorten_url(db, original_url, user_id).await
 }
 

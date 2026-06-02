@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Redirect},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{db::postgres::DbPool, services::url_service};
@@ -12,11 +12,6 @@ use crate::{db::postgres::DbPool, services::url_service};
 pub struct ShortenUrlRequest {
     pub original_url: String,
     pub user_id: String,
-}
-
-#[derive(Serialize)]
-struct ShortenUrlResponse {
-    short_code: String,
 }
 
 pub async fn shorten_url(
@@ -29,7 +24,7 @@ pub async fn shorten_url(
     };
 
     match url_service::shorten_url(&db, &body.original_url, user_id).await {
-        Ok(short_code) => (StatusCode::CREATED, Json(ShortenUrlResponse { short_code })).into_response(),
+        Ok(url) => (StatusCode::CREATED, Json(url)).into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }

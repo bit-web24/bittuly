@@ -1,12 +1,11 @@
-use crate::db::postgres::DbPool;
-use base62;
+use crate::{db::postgres::DbPool, models::Url};
 use uuid::Uuid;
 
 pub async fn add_shorten_url(
     db: &DbPool,
     original_url: &str,
     user_id: Uuid,
-) -> Result<String, sqlx::Error> {
+) -> Result<Url, sqlx::Error> {
     let mut tx = db.begin().await?;
 
     let url_id: i64 = sqlx::query_scalar(
@@ -19,15 +18,17 @@ pub async fn add_shorten_url(
 
     let short_code = base62::encode(url_id as u128);
 
-    sqlx::query("UPDATE urls SET short_code = $1 WHERE url_id = $2")
+    let url = sqlx::query_as(
+        "UPDATE urls SET short_code = $1 WHERE url_id = $2 RETURNING url_id, short_code, original_url, user_id, created_at, updated_at",
+    )
         .bind(&short_code)
         .bind(url_id)
-        .execute(&mut *tx)
+        .fetch_one(&mut *tx)
         .await?;
 
     tx.commit().await?;
 
-    Ok(short_code)
+    Ok(url)
 }
 
 pub async fn get_original_url(
