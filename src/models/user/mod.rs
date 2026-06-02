@@ -1,2 +1,3 @@
-pub mod user;
-pub use user::User;
+pub mod entity;
+
+pub use entity::User;
