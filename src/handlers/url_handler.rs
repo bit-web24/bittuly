@@ -6,13 +6,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{
-    db::postgres::DbPool,
-    repository::url_repository::{
-        add_shorten_url,
-        get_original_url as find_original_url,
-    },
-};
+use crate::{db::postgres::DbPool, services::url_service};
 
 #[derive(Deserialize)]
 pub struct ShortenUrlRequest {
@@ -34,7 +28,7 @@ pub async fn shorten_url(
         Err(_) => return (StatusCode::BAD_REQUEST, "invalid user_id").into_response(),
     };
 
-    match add_shorten_url(&db, &body.original_url, user_id).await {
+    match url_service::shorten_url(&db, &body.original_url, user_id).await {
         Ok(short_code) => (StatusCode::CREATED, Json(ShortenUrlResponse { short_code })).into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
@@ -44,7 +38,7 @@ pub async fn get_original_url(
     State(db): State<DbPool>,
     Path(short_code): Path<String>,
 ) -> impl IntoResponse {
-    match find_original_url(&db, &short_code).await {
+    match url_service::get_original_url(&db, &short_code).await {
         Ok(Some(original_url)) => Redirect::temporary(&original_url).into_response(),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),

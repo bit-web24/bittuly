@@ -3,6 +3,7 @@ mod handlers;
 mod models;
 mod repository;
 mod routes;
+mod services;
 
 #[tokio::main]
 async fn main() {
