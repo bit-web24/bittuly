@@ -7,6 +7,8 @@ pub struct Settings {
 
 impl Settings {
     pub fn from_env() -> Result<Self, env::VarError> {
+        dotenvy::dotenv().ok();
+
         let database_url = env::var("DATABASE_URL")?;
         let host = env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_owned());
         let port = env::var("PORT").unwrap_or_else(|_| "3000".to_owned());
