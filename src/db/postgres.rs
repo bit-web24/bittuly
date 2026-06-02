@@ -1,4 +1,4 @@
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::{PgPool, postgres::PgPoolOptions};
 
 pub type DbPool = PgPool;
 

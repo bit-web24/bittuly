@@ -14,7 +14,14 @@ use routes::router::create_router;
 use tokio::net::TcpListener;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() {
+    if let Err(err) = run().await {
+        eprintln!("ApplicationError: {err}");
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let settings = Settings::from_env()?;
     let db = init_pg_pool(&settings.database_url).await?;
     let app = create_router(db);
