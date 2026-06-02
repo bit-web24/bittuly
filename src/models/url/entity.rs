@@ -3,7 +3,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 pub struct Url {
-    pub id: i64,
+    pub url_id: i64,
     pub short_code: String,
     pub original_url: String,
     pub user_id: Uuid,
