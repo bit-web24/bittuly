@@ -1,19 +1,16 @@
-use axum::{
-    Router,
-    routing::{get, post},
-};
+use axum::Router;
 
 use crate::{
     db::postgres::DbPool,
-    handlers::url_handler::{get_all_urls, get_original_url, shorten_url},
+    routes::{url_routes::url_routes, user_routes::user_routes},
 };
 
 use tower_http::trace::TraceLayer;
 
 pub fn create_router(db: DbPool) -> Router {
     Router::new()
-        .route("/", post(shorten_url).get(get_all_urls))
-        .route("/{short_code}", get(get_original_url))
+        .merge(url_routes())
+        .nest("/users", user_routes())
         .layer(TraceLayer::new_for_http())
         .with_state(db)
 }
