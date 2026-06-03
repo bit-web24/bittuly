@@ -12,6 +12,7 @@ use config::settings::Settings;
 use db::postgres::init_pg_pool;
 use routes::router::create_router;
 use tokio::net::TcpListener;
+use tracing_subscriber;
 
 #[tokio::main]
 async fn main() {
@@ -22,6 +23,7 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt::init();
     let settings = Settings::from_env()?;
     let db = init_pg_pool(&settings.database_url).await?;
     let app = create_router(db);

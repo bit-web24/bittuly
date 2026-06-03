@@ -42,3 +42,12 @@ pub async fn get_original_url(
 
     Ok(original_url)
 }
+pub async fn get_all_urls(db: &DbPool) -> Result<Vec<Url>, sqlx::Error> {
+    let urls = sqlx::query_as(
+        "SELECT url_id, short_code, original_url, user_id, created_at, updated_at FROM urls",
+    )
+    .fetch_all(db)
+    .await?;
+
+    Ok(urls)
+}

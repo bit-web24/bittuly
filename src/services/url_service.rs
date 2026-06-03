@@ -15,3 +15,7 @@ pub async fn get_original_url(
 ) -> Result<Option<String>, sqlx::Error> {
     url_repository::get_original_url(db, short_code).await
 }
+
+pub async fn get_all_urls(db: &DbPool) -> Result<Vec<Url>, sqlx::Error> {
+    url_repository::get_all_urls(db).await
+}
