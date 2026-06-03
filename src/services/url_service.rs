@@ -16,6 +16,6 @@ pub async fn get_original_url(
     url_repository::get_original_url(db, short_code).await
 }
 
-pub async fn get_all_urls(db: &DbPool) -> Result<Vec<Url>, sqlx::Error> {
-    url_repository::get_all_urls(db).await
+pub async fn get_all_urls(db: &DbPool, user_id: Uuid) -> Result<Vec<Url>, sqlx::Error> {
+    url_repository::get_all_urls(db, user_id).await
 }

@@ -14,8 +14,23 @@ pub struct ShortenUrlRequest {
     pub user_id: String,
 }
 
-pub async fn get_all_urls(State(db): State<DbPool>) -> impl IntoResponse {
-    match url_service::get_all_urls(&db).await {
+#[derive(Deserialize)]
+pub struct GetAllUrlsRequest {
+    pub user_id: String,
+}
+
+pub async fn get_all_urls(
+    State(db): State<DbPool>,
+    Json(body): Json<GetAllUrlsRequest>,
+) -> impl IntoResponse {
+    let user_id = match Uuid::parse_str(&body.user_id) {
+        Ok(user_id) => user_id,
+        Err(err) => {
+            eprintln!("{:?}", err);
+            return (StatusCode::BAD_REQUEST, "invalid user_id").into_response();
+        }
+    };
+    match url_service::get_all_urls(&db, user_id).await {
         Ok(urls) => (StatusCode::OK, Json(urls)).into_response(),
         Err(err) => {
             eprintln!("{:?}", err);
