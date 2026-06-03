@@ -5,9 +5,9 @@ use uuid::Uuid;
 pub async fn create_user(db: &DbPool, payload: CreateUserPayload) -> Result<User, sqlx::Error> {
     sqlx::query_as(
         r#"
-        INSERT INTO users (user_id, username, email, password)
+        INSERT INTO users (id, username, email, password)
         VALUES ($1, $2, $3, $4)
-        RETURNING user_id AS id, username, email, password, created_at, updated_at
+        RETURNING id, username, email, password, created_at, updated_at
         "#,
     )
     .bind(Uuid::new_v4())
@@ -20,7 +20,7 @@ pub async fn create_user(db: &DbPool, payload: CreateUserPayload) -> Result<User
 
 pub async fn get_user_by_id(db: &DbPool, user_id: Uuid) -> Result<Option<User>, sqlx::Error> {
     sqlx::query_as(
-        "SELECT user_id AS id, username, email, password, created_at, updated_at FROM users WHERE user_id = $1",
+        "SELECT id, username, email, password, created_at, updated_at FROM users WHERE id = $1",
     )
         .bind(user_id)
         .fetch_optional(db)
@@ -40,8 +40,8 @@ pub async fn update_user(
             email = COALESCE($2, email),
             password = COALESCE($3, password),
             updated_at = NOW()
-        WHERE user_id = $4
-        RETURNING user_id AS id, username, email, password, created_at, updated_at
+        WHERE id = $4
+        RETURNING id, username, email, password, created_at, updated_at
         "#,
     )
     .bind(payload.username)
@@ -53,7 +53,7 @@ pub async fn update_user(
 }
 
 pub async fn delete_user(db: &DbPool, user_id: Uuid) -> Result<(), sqlx::Error> {
-    sqlx::query("DELETE FROM users WHERE user_id = $1")
+    sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(user_id)
         .execute(db)
         .await?;
