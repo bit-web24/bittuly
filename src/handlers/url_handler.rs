@@ -1,12 +1,12 @@
 use axum::{
-    extract::{Json, Path, State},
+    extract::{Extension, Json, Path, State},
     http::StatusCode,
     response::{IntoResponse, Redirect},
 };
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{db::postgres::DbPool, services::url_service};
+use crate::{db::postgres::DbPool, middlewares::jwt::Claims, services::url_service};
 
 #[derive(Deserialize)]
 pub struct ShortenUrlRequest {
@@ -21,6 +21,7 @@ pub struct GetAllUrlsRequest {
 
 pub async fn get_all_urls(
     State(db): State<DbPool>,
+    Extension(claims): Extension<Claims>,
     Json(body): Json<GetAllUrlsRequest>,
 ) -> impl IntoResponse {
     let user_id = match Uuid::parse_str(&body.user_id) {
@@ -30,6 +31,11 @@ pub async fn get_all_urls(
             return (StatusCode::BAD_REQUEST, "invalid user_id").into_response();
         }
     };
+
+    if user_id != claims.sub {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
     match url_service::get_all_urls(&db, user_id).await {
         Ok(urls) => (StatusCode::OK, Json(urls)).into_response(),
         Err(err) => {
@@ -41,6 +47,7 @@ pub async fn get_all_urls(
 
 pub async fn shorten_url(
     State(db): State<DbPool>,
+    Extension(claims): Extension<Claims>,
     Json(body): Json<ShortenUrlRequest>,
 ) -> impl IntoResponse {
     let user_id = match Uuid::parse_str(&body.user_id) {
@@ -50,6 +57,10 @@ pub async fn shorten_url(
             return (StatusCode::BAD_REQUEST, "invalid user_id").into_response();
         }
     };
+
+    if user_id != claims.sub {
+        return StatusCode::FORBIDDEN.into_response();
+    }
 
     match url_service::shorten_url(&db, &body.original_url, user_id).await {
         Ok(url) => (StatusCode::CREATED, Json(url)).into_response(),

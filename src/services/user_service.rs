@@ -1,10 +1,24 @@
 use crate::db::postgres::DbPool;
-use crate::models::user::{CreateUserPayload, UpdateUserPayload, User};
+use crate::middlewares::jwt::{create_access_token, create_refresh_token};
+use crate::models::user::{AuthUserResponse, CreateUserPayload, UpdateUserPayload, User};
 use crate::repository::user_repository;
 use uuid::Uuid;
 
-pub async fn create_user(db: &DbPool, payload: CreateUserPayload) -> Result<User, sqlx::Error> {
-    user_repository::create_user(db, payload).await
+type ServiceResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+pub async fn create_user(
+    db: &DbPool,
+    payload: CreateUserPayload,
+) -> ServiceResult<AuthUserResponse> {
+    let user = user_repository::create_user(db, payload).await?;
+    let token = create_access_token(user.id)?;
+    let refresh_token = create_refresh_token(user.id)?;
+
+    Ok(AuthUserResponse {
+        user,
+        token,
+        refresh_token,
+    })
 }
 
 pub async fn get_user_by_id(db: &DbPool, user_id: Uuid) -> Result<Option<User>, sqlx::Error> {
@@ -15,8 +29,16 @@ pub async fn update_user(
     db: &DbPool,
     user_id: Uuid,
     payload: UpdateUserPayload,
-) -> Result<User, sqlx::Error> {
-    user_repository::update_user(db, user_id, payload).await
+) -> ServiceResult<AuthUserResponse> {
+    let user = user_repository::update_user(db, user_id, payload).await?;
+    let token = create_access_token(user.id)?;
+    let refresh_token = create_refresh_token(user.id)?;
+
+    Ok(AuthUserResponse {
+        user,
+        token,
+        refresh_token,
+    })
 }
 
 pub async fn delete_user(db: &DbPool, user_id: Uuid) -> Result<(), sqlx::Error> {

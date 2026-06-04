@@ -14,6 +14,13 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Serialize)]
+pub struct AuthUserResponse {
+    pub user: User,
+    pub token: String,
+    pub refresh_token: String,
+}
+
 #[derive(Deserialize)]
 pub struct CreateUserPayload {
     pub username: String,
