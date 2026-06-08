@@ -1,5 +1,5 @@
 use crate::db::postgres::DbPool;
-use crate::middlewares::jwt::Claims;
+use crate::middlewares::jwt::{Claims, clear_token_cookies, set_token_cookies};
 use crate::models::user::{CreateUserPayload, LoginPayload, UpdateUserPayload};
 use crate::services::user_service;
 use axum::extract::{Extension, Json, Path, State};
@@ -16,9 +16,42 @@ pub async fn create_user(
         return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
     }
     match user_service::create_user(&db, payload).await {
-        Ok(user) => (StatusCode::CREATED, Json(user)).into_response(),
+        Ok(auth) => {
+            let mut response = (StatusCode::CREATED, Json(auth.user)).into_response();
+            if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {
+                tracing::error!("set_token_cookies: {:?}", e);
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+            response
+        }
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())).into_response(),
     }
+}
+
+pub async fn login(
+    State(db): State<DbPool>,
+    Json(payload): Json<LoginPayload>,
+) -> impl IntoResponse {
+    if let Err(errors) = payload.validate() {
+        return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
+    }
+    match user_service::login(&db, &payload.email, &payload.password).await {
+        Ok(auth) => {
+            let mut response = (StatusCode::OK, Json(auth.user)).into_response();
+            if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {
+                tracing::error!("set_token_cookies: {:?}", e);
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+            response
+        }
+        Err(_) => StatusCode::UNAUTHORIZED.into_response(),
+    }
+}
+
+pub async fn logout() -> impl IntoResponse {
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    clear_token_cookies(&mut response);
+    response
 }
 
 pub async fn get_user_by_id(
@@ -27,7 +60,7 @@ pub async fn get_user_by_id(
     Path(user_id): Path<String>,
 ) -> impl IntoResponse {
     let user_id = match Uuid::parse_str(&user_id) {
-        Ok(user_id) => user_id,
+        Ok(id) => id,
         Err(_) => return (StatusCode::BAD_REQUEST, "invalid user_id").into_response(),
     };
 
@@ -49,7 +82,7 @@ pub async fn update_user(
     Json(payload): Json<UpdateUserPayload>,
 ) -> impl IntoResponse {
     let user_id = match Uuid::parse_str(&user_id) {
-        Ok(user_id) => user_id,
+        Ok(id) => id,
         Err(_) => return (StatusCode::BAD_REQUEST, "invalid user_id").into_response(),
     };
 
@@ -62,7 +95,14 @@ pub async fn update_user(
     }
 
     match user_service::update_user(&db, user_id, payload).await {
-        Ok(user) => (StatusCode::OK, Json(user)).into_response(),
+        Ok(auth) => {
+            let mut response = (StatusCode::OK, Json(auth.user)).into_response();
+            if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {
+                tracing::error!("set_token_cookies: {:?}", e);
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+            response
+        }
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())).into_response(),
     }
 }
@@ -73,7 +113,7 @@ pub async fn delete_user(
     Path(user_id): Path<String>,
 ) -> impl IntoResponse {
     let user_id = match Uuid::parse_str(&user_id) {
-        Ok(user_id) => user_id,
+        Ok(id) => id,
         Err(_) => return (StatusCode::BAD_REQUEST, "invalid user_id").into_response(),
     };
 
@@ -84,17 +124,5 @@ pub async fn delete_user(
     match user_service::delete_user(&db, user_id).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())).into_response(),
-    }
-}
-pub async fn login(
-    State(db): State<DbPool>,
-    Json(payload): Json<LoginPayload>,
-) -> impl IntoResponse {
-    if let Err(errors) = payload.validate() {
-        return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
-    }
-    match user_service::login(&db, &payload.email, &payload.password).await {
-        Ok(auth) => (StatusCode::OK, Json(auth)).into_response(),
-        Err(_) => StatusCode::UNAUTHORIZED.into_response(),
     }
 }

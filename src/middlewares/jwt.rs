@@ -13,8 +13,10 @@ use uuid::Uuid;
 
 const ACCESS_TOKEN_TYPE: &str = "access";
 const REFRESH_TOKEN_TYPE: &str = "refresh";
-const ACCESS_TOKEN_TTL_SECONDS: u64 = 60 * 15; // 15 minutes
+const ACCESS_TOKEN_TTL_SECONDS: u64 = 60 * 15;            // 15 minutes
 const REFRESH_TOKEN_TTL_SECONDS: u64 = 60 * 60 * 24 * 30; // 30 days
+const COOKIE_ACCESS: &str = "access_token";
+const COOKIE_REFRESH: &str = "refresh_token";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
@@ -29,59 +31,84 @@ fn create_token(
     ttl_seconds: u64,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let secret = std::env::var("JWT_SECRET")?;
-    let expires_at = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() + ttl_seconds;
-    let claims = Claims {
-        sub: user_id,
-        exp: expires_at as usize,
-        token_type: token_type.to_string(),
-    };
-
-    let token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(secret.as_bytes()),
-    )?;
-
-    Ok(token)
+    let exp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() + ttl_seconds;
+    let claims = Claims { sub: user_id, exp: exp as usize, token_type: token_type.to_string() };
+    Ok(encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_bytes()))?)
 }
 
-pub fn create_access_token(
-    user_id: Uuid,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+pub fn create_access_token(user_id: Uuid) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     create_token(user_id, ACCESS_TOKEN_TYPE, ACCESS_TOKEN_TTL_SECONDS)
 }
 
-pub fn create_refresh_token(
-    user_id: Uuid,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+pub fn create_refresh_token(user_id: Uuid) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     create_token(user_id, REFRESH_TOKEN_TYPE, REFRESH_TOKEN_TTL_SECONDS)
 }
 
-pub async fn jwt_auth(mut req: Request, next: Next) -> Result<Response, StatusCode> {
-    let auth_header = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+/// Parse a single cookie value from a `Cookie: a=1; b=2` header string.
+fn parse_cookie(cookie_header: &str, name: &str) -> Option<String> {
+    cookie_header.split(';').find_map(|pair| {
+        let pair = pair.trim();
+        let (k, v) = pair.split_once('=')?;
+        (k.trim() == name).then(|| v.trim().to_owned())
+    })
+}
 
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+/// Append `Set-Cookie` headers for both tokens.
+/// In debug builds `Secure` is omitted so plain-HTTP local testing works.
+pub fn set_token_cookies(
+    response: &mut Response,
+    access_token: &str,
+    refresh_token: &str,
+) -> Result<(), header::InvalidHeaderValue> {
+    #[cfg(debug_assertions)]
+    let flags = "HttpOnly; SameSite=Strict";
+    #[cfg(not(debug_assertions))]
+    let flags = "HttpOnly; Secure; SameSite=Strict";
+
+    let access = format!("{COOKIE_ACCESS}={access_token}; {flags}; Max-Age={ACCESS_TOKEN_TTL_SECONDS}; Path=/");
+    let refresh = format!("{COOKIE_REFRESH}={refresh_token}; {flags}; Max-Age={REFRESH_TOKEN_TTL_SECONDS}; Path=/");
+
+    response.headers_mut().append(header::SET_COOKIE, HeaderValue::from_str(&access)?);
+    response.headers_mut().append(header::SET_COOKIE, HeaderValue::from_str(&refresh)?);
+    Ok(())
+}
+
+/// Append `Set-Cookie` headers that instruct the browser to delete both cookies.
+pub fn clear_token_cookies(response: &mut Response) {
+    for name in [COOKIE_ACCESS, COOKIE_REFRESH] {
+        let value = format!("{name}=; HttpOnly; SameSite=Strict; Max-Age=0; Path=/");
+        response.headers_mut().append(
+            header::SET_COOKIE,
+            HeaderValue::from_str(&value).expect("static clear-cookie value is always valid"),
+        );
+    }
+}
+
+pub async fn jwt_auth(mut req: Request, next: Next) -> Result<Response, StatusCode> {
+    // Clone to String so we release the immutable borrow on `req` before mutating it.
+    let cookie_str = req
+        .headers()
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?
+        .to_owned();
+
+    let access_token = parse_cookie(&cookie_str, COOKIE_ACCESS).ok_or(StatusCode::UNAUTHORIZED)?;
 
     let secret = std::env::var("JWT_SECRET").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     match decode::<Claims>(
-        token,
+        &access_token,
         &DecodingKey::from_secret(secret.as_bytes()),
         &Validation::default(),
     ) {
-        Ok(token_data) if token_data.claims.token_type == ACCESS_TOKEN_TYPE => {
-            req.extensions_mut().insert(token_data.claims);
+        Ok(data) if data.claims.token_type == ACCESS_TOKEN_TYPE => {
+            req.extensions_mut().insert(data.claims);
             Ok(next.run(req).await)
         }
         Ok(_) => Err(StatusCode::UNAUTHORIZED),
         Err(err) if matches!(err.kind(), ErrorKind::ExpiredSignature) => {
-            refresh_access_token(req, next, &secret).await
+            refresh_access_token(req, next, &cookie_str, &secret).await
         }
         Err(_) => Err(StatusCode::UNAUTHORIZED),
     }
@@ -90,46 +117,35 @@ pub async fn jwt_auth(mut req: Request, next: Next) -> Result<Response, StatusCo
 async fn refresh_access_token(
     mut req: Request,
     next: Next,
+    cookie_str: &str,
     secret: &str,
 ) -> Result<Response, StatusCode> {
-    let refresh_token = req
-        .headers()
-        .get("x-refresh-token")
-        .and_then(|value| value.to_str().ok())
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+    let refresh_token =
+        parse_cookie(cookie_str, COOKIE_REFRESH).ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let refresh_token_data = decode::<Claims>(
-        refresh_token,
+    let data = decode::<Claims>(
+        &refresh_token,
         &DecodingKey::from_secret(secret.as_bytes()),
         &Validation::default(),
     )
     .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    if refresh_token_data.claims.token_type != REFRESH_TOKEN_TYPE {
+    if data.claims.token_type != REFRESH_TOKEN_TYPE {
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let user_id = refresh_token_data.claims.sub;
-    let access_token =
-        create_access_token(user_id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let refresh_token =
-        create_refresh_token(user_id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let user_id = data.claims.sub;
+    let new_access = create_access_token(user_id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let new_refresh = create_refresh_token(user_id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     req.extensions_mut().insert(Claims {
         sub: user_id,
-        exp: refresh_token_data.claims.exp,
+        exp: data.claims.exp,
         token_type: ACCESS_TOKEN_TYPE.to_string(),
     });
 
     let mut response = next.run(req).await;
-    response.headers_mut().insert(
-        "x-access-token",
-        HeaderValue::from_str(&access_token).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-    );
-    response.headers_mut().insert(
-        "x-refresh-token",
-        HeaderValue::from_str(&refresh_token).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-    );
-
+    set_token_cookies(&mut response, &new_access, &new_refresh)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(response)
 }
