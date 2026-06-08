@@ -13,7 +13,7 @@ echo "1. Create user"
 CREATE_USER_RESPONSE="$(
   curl -sS -X POST "$BASE_URL/users" \
     -H "Content-Type: application/json" \
-    -d "{\"username\":\"bittu-$STAMP\",\"email\":\"bittu-$STAMP@example.com\",\"password\":\"secret\"}"
+    -d "{\"username\":\"bittu-$STAMP\",\"email\":\"bittu-$STAMP@example.com\",\"password\":\"secret123\"}"
 )"
 echo "$CREATE_USER_RESPONSE"
 
@@ -39,14 +39,23 @@ AUTH_HEADER="Authorization: Bearer $AUTH_TOKEN"
 REFRESH_HEADER="x-refresh-token: $REFRESH_TOKEN"
 
 echo
-echo "2. Get user by id: $USER_ID"
+echo "2. Login"
+LOGIN_RESPONSE="$(
+  curl -sS -X POST "$BASE_URL/users/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"email\":\"bittu-$STAMP@example.com\",\"password\":\"secret123\"}"
+)"
+echo "$LOGIN_RESPONSE"
+
+echo
+echo "3. Get user by id: $USER_ID"
 curl -sS -X GET "$BASE_URL/users/$USER_ID" \
   -H "$AUTH_HEADER" \
   -H "$REFRESH_HEADER"
 echo
 
 echo
-echo "3. Update user by id: $USER_ID"
+echo "4. Update user by id: $USER_ID"
 UPDATE_USER_RESPONSE="$(
   curl -sS -X PUT "$BASE_URL/users/$USER_ID" \
     -H "$AUTH_HEADER" \
@@ -69,13 +78,13 @@ if [ -n "$UPDATED_REFRESH_TOKEN" ]; then
 fi
 
 echo
-echo "4. Shorten URL for user id: $USER_ID"
+echo "5. Shorten URL"
 SHORTEN_URL_RESPONSE="$(
   curl -sS -X POST "$BASE_URL/" \
     -H "$AUTH_HEADER" \
     -H "$REFRESH_HEADER" \
     -H "Content-Type: application/json" \
-    -d "{\"original_url\":\"https://example.com\",\"user_id\":\"$USER_ID\"}"
+    -d "{\"original_url\":\"https://example.com\"}"
 )"
 echo "$SHORTEN_URL_RESPONSE"
 
@@ -86,23 +95,19 @@ if [ -z "$SHORT_CODE" ]; then
 fi
 
 echo
-echo "5. Get all URLs for user id: $USER_ID"
+echo "6. Get all URLs"
 curl -sS -X GET "$BASE_URL/" \
-  -H "$AUTH_HEADER" \
-  -H "$REFRESH_HEADER" \
-  -H "Content-Type: application/json" \
-  -d "{\"user_id\":\"$USER_ID\"}"
-echo
-
-echo
-echo "6. Resolve short URL: $SHORT_CODE"
-curl -sS -i -X GET "$BASE_URL/$SHORT_CODE" \
   -H "$AUTH_HEADER" \
   -H "$REFRESH_HEADER"
 echo
 
 echo
-echo "7. Delete user by id: $USER_ID"
+echo "7. Resolve short URL: $SHORT_CODE (no auth required)"
+curl -sS -i -X GET "$BASE_URL/$SHORT_CODE"
+echo
+
+echo
+echo "8. Delete user by id: $USER_ID"
 curl -sS -i -X DELETE "$BASE_URL/users/$USER_ID" \
   -H "$AUTH_HEADER" \
   -H "$REFRESH_HEADER"
