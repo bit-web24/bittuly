@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 const ACCESS_TOKEN_TYPE: &str = "access";
 const REFRESH_TOKEN_TYPE: &str = "refresh";
-const ACCESS_TOKEN_TTL_SECONDS: u64 = 60 * 60 * 24; // 24 hours
+const ACCESS_TOKEN_TTL_SECONDS: u64 = 60 * 15; // 15 minutes
 const REFRESH_TOKEN_TTL_SECONDS: u64 = 60 * 60 * 24 * 30; // 30 days
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
