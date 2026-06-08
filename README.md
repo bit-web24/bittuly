@@ -18,3 +18,16 @@ Postgres init scripts only run when the data volume is first created. If you lat
   docker compose down -v
   docker compose up -d
 ```
+
+## Usage
+To see the test workflow
+
+Make the bash script runnable
+```bash
+chmod +x ./scripts/api-test.sh
+```
+then execute the `api-test.sh` script and it will show the request response cycle for all the requests made.
+
+```bash
+./scripts/api-test.sh
+```
