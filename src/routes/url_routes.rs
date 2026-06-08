@@ -11,8 +11,11 @@ use crate::{
 };
 
 pub fn url_routes() -> Router<DbPool> {
-    Router::new()
+    let protected = Router::new()
         .route("/", post(shorten_url).get(get_all_urls))
+        .layer(middleware::from_fn(jwt_auth));
+
+    Router::new()
+        .merge(protected)
         .route("/{short_code}", get(get_original_url))
-        .layer(middleware::from_fn(jwt_auth))
 }
