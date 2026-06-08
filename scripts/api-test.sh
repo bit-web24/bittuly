@@ -190,6 +190,7 @@ captured "id" "$USER_ID"
 
 # ═════════════════════════════════════════════════════════════════════════════
 section "2 · Login  (cookie jar refreshed)"
+COOKIE_JAR=""
 do_request POST "$BASE_URL/users/login" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"bittu-$STAMP@example.com\",\"password\":\"secret123\"}"
