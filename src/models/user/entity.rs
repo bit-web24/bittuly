@@ -42,3 +42,10 @@ pub struct UpdateUserPayload {
     #[validate(length(min = 6))]
     pub password: Option<String>,
 }
+
+#[derive(Deserialize, Validate)]
+pub struct LoginPayload {
+    #[validate(email)]
+    pub email: String,
+    pub password: String,
+}

@@ -27,6 +27,15 @@ pub async fn get_user_by_id(db: &DbPool, user_id: Uuid) -> Result<Option<User>, 
         .await
 }
 
+pub async fn get_user_by_email(db: &DbPool, email: &str) -> Result<Option<User>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT id, username, email, password, created_at, updated_at FROM users WHERE email = $1",
+    )
+    .bind(email)
+    .fetch_optional(db)
+    .await
+}
+
 pub async fn update_user(
     db: &DbPool,
     user_id: Uuid,

@@ -3,7 +3,7 @@ use axum::routing::{get, post};
 
 use crate::{
     db::postgres::DbPool,
-    handlers::user_handler::{create_user, delete_user, get_user_by_id, update_user},
+    handlers::user_handler::{create_user, delete_user, get_user_by_id, login, update_user},
     middlewares::jwt::jwt_auth,
 };
 
@@ -17,5 +17,6 @@ pub fn user_routes() -> Router<DbPool> {
 
     Router::new()
         .route("/", post(create_user))
+        .route("/login", post(login))
         .merge(protected_routes)
 }

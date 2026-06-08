@@ -1,6 +1,6 @@
 use crate::db::postgres::DbPool;
 use crate::middlewares::jwt::Claims;
-use crate::models::user::{CreateUserPayload, UpdateUserPayload};
+use crate::models::user::{CreateUserPayload, LoginPayload, UpdateUserPayload};
 use crate::services::user_service;
 use axum::extract::{Extension, Json, Path, State};
 use axum::http::StatusCode;
@@ -84,5 +84,17 @@ pub async fn delete_user(
     match user_service::delete_user(&db, user_id).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())).into_response(),
+    }
+}
+pub async fn login(
+    State(db): State<DbPool>,
+    Json(payload): Json<LoginPayload>,
+) -> impl IntoResponse {
+    if let Err(errors) = payload.validate() {
+        return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
+    }
+    match user_service::login(&db, &payload.email, &payload.password).await {
+        Ok(auth) => (StatusCode::OK, Json(auth)).into_response(),
+        Err(_) => StatusCode::UNAUTHORIZED.into_response(),
     }
 }

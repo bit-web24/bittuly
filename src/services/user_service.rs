@@ -8,9 +8,29 @@ type ServiceResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 pub async fn create_user(
     db: &DbPool,
-    payload: CreateUserPayload,
+    mut payload: CreateUserPayload,
 ) -> ServiceResult<AuthUserResponse> {
+    payload.password = bcrypt::hash(&payload.password, bcrypt::DEFAULT_COST)?;
     let user = user_repository::create_user(db, payload).await?;
+    let token = create_access_token(user.id)?;
+    let refresh_token = create_refresh_token(user.id)?;
+
+    Ok(AuthUserResponse {
+        user,
+        token,
+        refresh_token,
+    })
+}
+
+pub async fn login(db: &DbPool, email: &str, password: &str) -> ServiceResult<AuthUserResponse> {
+    let user: User = user_repository::get_user_by_email(db, email)
+        .await?
+        .ok_or("invalid credentials")?;
+
+    if !bcrypt::verify(password, &user.password)? {
+        return Err("invalid credentials".into());
+    }
+
     let token = create_access_token(user.id)?;
     let refresh_token = create_refresh_token(user.id)?;
 
@@ -28,8 +48,11 @@ pub async fn get_user_by_id(db: &DbPool, user_id: Uuid) -> Result<Option<User>, 
 pub async fn update_user(
     db: &DbPool,
     user_id: Uuid,
-    payload: UpdateUserPayload,
+    mut payload: UpdateUserPayload,
 ) -> ServiceResult<AuthUserResponse> {
+    if let Some(ref plain) = payload.password {
+        payload.password = Some(bcrypt::hash(plain, bcrypt::DEFAULT_COST)?);
+    }
     let user = user_repository::update_user(db, user_id, payload).await?;
     let token = create_access_token(user.id)?;
     let refresh_token = create_refresh_token(user.id)?;
