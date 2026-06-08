@@ -4,11 +4,13 @@ use axum::{
     response::{IntoResponse, Redirect},
 };
 use serde::Deserialize;
+use validator::Validate;
 
 use crate::{db::postgres::DbPool, middlewares::jwt::Claims, services::url_service};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct ShortenUrlRequest {
+    #[validate(url)]
     pub original_url: String,
 }
 
@@ -30,6 +32,9 @@ pub async fn shorten_url(
     Extension(claims): Extension<Claims>,
     Json(body): Json<ShortenUrlRequest>,
 ) -> impl IntoResponse {
+    if let Err(errors) = body.validate() {
+        return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
+    }
     match url_service::shorten_url(&db, &body.original_url, claims.sub).await {
         Ok(url) => (StatusCode::CREATED, Json(url)).into_response(),
         Err(err) => {

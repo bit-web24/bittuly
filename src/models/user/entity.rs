@@ -3,6 +3,7 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
+use validator::Validate;
 
 #[derive(sqlx::FromRow, Serialize)]
 pub struct User {
@@ -22,16 +23,22 @@ pub struct AuthUserResponse {
     pub refresh_token: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct CreateUserPayload {
+    #[validate(length(min = 3, max = 50))]
     pub username: String,
+    #[validate(email)]
     pub email: String,
+    #[validate(length(min = 6))]
     pub password: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct UpdateUserPayload {
+    #[validate(length(min = 3, max = 50))]
     pub username: Option<String>,
+    #[validate(email)]
     pub email: Option<String>,
+    #[validate(length(min = 6))]
     pub password: Option<String>,
 }

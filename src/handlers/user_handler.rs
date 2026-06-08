@@ -6,11 +6,15 @@ use axum::extract::{Extension, Json, Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use uuid::Uuid;
+use validator::Validate;
 
 pub async fn create_user(
     State(db): State<DbPool>,
     Json(payload): Json<CreateUserPayload>,
 ) -> impl IntoResponse {
+    if let Err(errors) = payload.validate() {
+        return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
+    }
     match user_service::create_user(&db, payload).await {
         Ok(user) => (StatusCode::CREATED, Json(user)).into_response(),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())).into_response(),
@@ -51,6 +55,10 @@ pub async fn update_user(
 
     if user_id != claims.sub {
         return StatusCode::FORBIDDEN.into_response();
+    }
+
+    if let Err(errors) = payload.validate() {
+        return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
     }
 
     match user_service::update_user(&db, user_id, payload).await {
