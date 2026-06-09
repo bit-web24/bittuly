@@ -1,7 +1,8 @@
 use crate::db::postgres::DbPool;
 use crate::middlewares::jwt::{Claims, clear_token_cookies, set_token_cookies};
-use crate::models::user::{CreateUserPayload, LoginPayload, UpdateUserPayload};
+use crate::models::user::{CreateUserPayload, LoginPayload, UpdateUserPayload, VerifyOtpPayload};
 use crate::services::user_service;
+use serde_json::json;
 use axum::extract::{Extension, Json, Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -124,5 +125,62 @@ pub async fn delete_user(
     match user_service::delete_user(&db, user_id).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())).into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// OTP signup flow handlers
+// ---------------------------------------------------------------------------
+
+/// POST /users/signup
+/// Validates payload, sends OTP email, returns { pending_token } (no user created yet).
+pub async fn request_signup_handler(
+    State(db): State<DbPool>,
+    Json(payload): Json<CreateUserPayload>,
+) -> impl IntoResponse {
+    if let Err(errors) = payload.validate() {
+        return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
+    }
+    match user_service::request_signup(&db, payload).await {
+        Ok(pending_token) => (
+            StatusCode::OK,
+            Json(json!({ "pending_token": pending_token })),
+        )
+            .into_response(),
+        Err(err) if err.to_string() == "email already registered" => {
+            (StatusCode::CONFLICT, Json(json!({ "error": err.to_string() }))).into_response()
+        }
+        Err(err) => {
+            tracing::error!("request_signup: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// POST /users/verify-otp
+/// Verifies OTP, creates the real user, sets auth cookies, returns user.
+pub async fn verify_otp_handler(
+    State(db): State<DbPool>,
+    Json(payload): Json<VerifyOtpPayload>,
+) -> impl IntoResponse {
+    if let Err(errors) = payload.validate() {
+        return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
+    }
+    match user_service::verify_otp(&db, &payload.pending_token, &payload.otp).await {
+        Ok(auth) => {
+            let mut response = (StatusCode::CREATED, Json(auth.user)).into_response();
+            if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {
+                tracing::error!("set_token_cookies: {:?}", e);
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+            response
+        }
+        Err(err) if err.to_string() == "invalid OTP" => {
+            (StatusCode::UNAUTHORIZED, Json(json!({ "error": "invalid or expired OTP" }))).into_response()
+        }
+        Err(err) => {
+            tracing::error!("verify_otp: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
     }
 }
