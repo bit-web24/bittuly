@@ -1,5 +1,8 @@
 use axum::Router;
+use axum::http::{HeaderValue, Method, header};
 use axum::routing::get;
+use tower_http::cors::CorsLayer;
+use tower_http::trace::TraceLayer;
 
 use crate::{
     db::postgres::DbPool,
@@ -7,9 +10,23 @@ use crate::{
     routes::{url_routes::url_routes, user_routes::user_routes},
 };
 
-use tower_http::trace::TraceLayer;
+pub fn create_router(db: DbPool, mode: &str, cors_origin: &str) -> Router {
+    let cors = CorsLayer::new()
+        .allow_origin(
+            cors_origin
+                .parse::<HeaderValue>()
+                .expect("Invalid CORS_ORIGIN value"),
+        )
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([header::CONTENT_TYPE])
+        .allow_credentials(true);
 
-pub fn create_router(db: DbPool, mode: &str) -> Router {
     let mut router = Router::new()
         .merge(url_routes())
         .nest("/users", user_routes());
@@ -20,6 +37,7 @@ pub fn create_router(db: DbPool, mode: &str) -> Router {
     }
 
     router
+        .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(db)
 }

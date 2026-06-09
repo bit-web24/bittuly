@@ -5,6 +5,8 @@ pub struct Settings {
     pub server_addr: String,
     /// "development" | "production"
     pub mode: String,
+    /// Allowed CORS origin, e.g. "http://localhost:5173"
+    pub cors_origin: String,
 }
 
 impl Settings {
@@ -16,11 +18,14 @@ impl Settings {
         let port = env::var("PORT").unwrap_or_else(|_| "3000".to_owned());
 
         let mode = env::var("MODE").unwrap_or_else(|_| "production".to_owned());
+        let cors_origin = env::var("CORS_ORIGIN")
+            .unwrap_or_else(|_| "http://localhost:5173".to_owned());
 
         Ok(Self {
             database_url,
             server_addr: format!("{host}:{port}"),
             mode,
+            cors_origin,
         })
     }
 }

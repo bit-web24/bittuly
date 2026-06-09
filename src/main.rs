@@ -33,10 +33,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let settings = Settings::from_env()?;
     let db = init_pg_pool(&settings.database_url).await?;
-    let app = create_router(db, &settings.mode);
+    let app = create_router(db, &settings.mode, &settings.cors_origin);
     let listener = TcpListener::bind(&settings.server_addr).await?;
 
-    println!("listening on {} [mode={}]", settings.server_addr, settings.mode);
+    println!(
+        "listening on {} [mode={} cors={}]",
+        settings.server_addr, settings.mode, settings.cors_origin
+    );
 
     axum::serve(listener, app).await?;
 
