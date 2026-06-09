@@ -6,6 +6,7 @@ mod models;
 mod repository;
 mod routes;
 mod services;
+mod utils;
 
 use config::settings::Settings;
 use db::postgres::init_pg_pool;
