@@ -5,3 +5,4 @@ pub use entity::CreateUserPayload;
 pub use entity::LoginPayload;
 pub use entity::UpdateUserPayload;
 pub use entity::User;
+pub use entity::VerifyOtpPayload;

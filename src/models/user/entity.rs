@@ -49,3 +49,12 @@ pub struct LoginPayload {
     pub email: String,
     pub password: String,
 }
+
+#[derive(Deserialize, Validate)]
+pub struct VerifyOtpPayload {
+    /// The short-lived pending JWT issued by POST /users/signup.
+    pub pending_token: String,
+    /// The 6-digit OTP the user received by email.
+    #[validate(length(min = 6, max = 6))]
+    pub otp: String,
+}
