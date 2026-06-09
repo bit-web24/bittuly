@@ -13,8 +13,10 @@ use uuid::Uuid;
 
 const ACCESS_TOKEN_TYPE: &str = "access";
 const REFRESH_TOKEN_TYPE: &str = "refresh";
+const PENDING_TOKEN_TYPE: &str = "pending";
 const ACCESS_TOKEN_TTL_SECONDS: u64 = 60 * 15;            // 15 minutes
 const REFRESH_TOKEN_TTL_SECONDS: u64 = 60 * 60 * 24 * 30; // 30 days
+const PENDING_TOKEN_TTL_SECONDS: u64 = 60 * 10;           // 10 minutes
 const COOKIE_ACCESS: &str = "access_token";
 const COOKIE_REFRESH: &str = "refresh_token";
 
@@ -42,6 +44,59 @@ pub fn create_access_token(user_id: Uuid) -> Result<String, Box<dyn std::error::
 
 pub fn create_refresh_token(user_id: Uuid) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     create_token(user_id, REFRESH_TOKEN_TYPE, REFRESH_TOKEN_TTL_SECONDS)
+}
+
+// ---------------------------------------------------------------------------
+// Pending signup JWT — carries encrypted signup data until OTP is verified
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OtpClaims {
+    /// Identifies this as a pending-signup token, not an auth token.
+    pub token_type: String,
+    pub email: String,
+    pub username: String,
+    pub password_hash: String,
+    pub otp_hash: String,
+    pub exp: usize,
+}
+
+/// Issue a short-lived JWT that holds the pending user's data + OTP hash.
+/// The client stores this and sends it back with the OTP code.
+pub fn create_pending_token(
+    email: &str,
+    username: &str,
+    password_hash: &str,
+    otp_hash: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let secret = std::env::var("JWT_SECRET")?;
+    let exp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() + PENDING_TOKEN_TTL_SECONDS;
+    let claims = OtpClaims {
+        token_type: PENDING_TOKEN_TYPE.to_string(),
+        email: email.to_string(),
+        username: username.to_string(),
+        password_hash: password_hash.to_string(),
+        otp_hash: otp_hash.to_string(),
+        exp: exp as usize,
+    };
+    Ok(encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_bytes()))?)
+}
+
+/// Decode and validate a pending signup JWT.
+/// Returns an error if the token is expired, tampered, or not a pending token.
+pub fn decode_pending_token(
+    token: &str,
+) -> Result<OtpClaims, Box<dyn std::error::Error + Send + Sync>> {
+    let secret = std::env::var("JWT_SECRET")?;
+    let data = decode::<OtpClaims>(
+        token,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &Validation::default(),
+    )?;
+    if data.claims.token_type != PENDING_TOKEN_TYPE {
+        return Err("invalid token type".into());
+    }
+    Ok(data.claims)
 }
 
 /// Parse a single cookie value from a `Cookie: a=1; b=2` header string.
