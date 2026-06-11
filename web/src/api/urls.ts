@@ -1,7 +1,7 @@
 import { apiRequest } from "./client"
 
 export interface ShortenedUrl {
-  id: string
+  id: number
   short_code: string
   original_url: string
   created_at: string
