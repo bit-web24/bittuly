@@ -1,7 +1,8 @@
 use axum::{
+    handler::Handler,
     middleware,
     Router,
-    routing::{delete, get, post},
+    routing::{get, post},
 };
 
 use crate::{
@@ -11,12 +12,17 @@ use crate::{
 };
 
 pub fn url_routes() -> Router<DbPool> {
-    let protected = Router::new()
+    // POST / and GET / both require auth
+    let protected_root = Router::new()
         .route("/", post(shorten_url).get(get_all_urls))
-        .route("/{url_id}", delete(delete_url_handler))
         .layer(middleware::from_fn(jwt_auth));
 
     Router::new()
-        .merge(protected)
-        .route("/{short_code}", get(get_original_url))
+        .merge(protected_root)
+        // GET /{id} is public; DELETE /{id} requires auth — applied at handler level
+        .route(
+            "/{id}",
+            get(get_original_url)
+                .delete(delete_url_handler.layer(middleware::from_fn(jwt_auth))),
+        )
 }
