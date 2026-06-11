@@ -20,7 +20,7 @@ function isValidUrl(url: string): boolean {
 
 export function Dashboard() {
   const [urls, setUrls] = React.useState<ShortenedUrl[]>([])
-  const [newIds, setNewIds] = React.useState<Set<string>>(new Set())
+  const [newIds, setNewIds] = React.useState<Set<number>>(new Set())
   const [inputUrl, setInputUrl] = React.useState("")
   const [inputError, setInputError] = React.useState(false)
   const [isShortening, setIsShortening] = React.useState(false)
