@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Copy, Check, Trash2, ExternalLink } from "lucide-react"
+import { Copy, Check, Trash2, ExternalLink, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -15,10 +15,13 @@ const BASE_URL = "http://localhost:3000"
 interface UrlItemProps {
   url: ShortenedUrl
   isNew?: boolean
+  onDelete?: (id: number) => void
 }
 
-export function UrlItem({ url, isNew = false }: UrlItemProps) {
+export function UrlItem({ url, isNew = false, onDelete }: UrlItemProps) {
   const [copied, setCopied] = React.useState(false)
+  const [confirming, setConfirming] = React.useState(false)
+  const confirmTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const shortUrl = `${BASE_URL}/${url.short_code}`
 
   const handleCopy = async () => {
@@ -31,6 +34,32 @@ export function UrlItem({ url, isNew = false }: UrlItemProps) {
       toast.error("Failed to copy")
     }
   }
+
+  const handleDeleteClick = () => {
+    if (!confirming) {
+      // First click — enter confirm mode, auto-reset after 3s
+      setConfirming(true)
+      confirmTimerRef.current = setTimeout(() => setConfirming(false), 3000)
+    } else {
+      // Second click — execute
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+      setConfirming(false)
+      onDelete?.(url.id)
+    }
+  }
+
+  const handleCancelDelete = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+    setConfirming(false)
+  }
+
+  // Cleanup timer on unmount
+  React.useEffect(() => {
+    return () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+    }
+  }, [])
 
   return (
     <TooltipProvider>
@@ -67,6 +96,7 @@ export function UrlItem({ url, isNew = false }: UrlItemProps) {
 
         {/* Actions */}
         <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-100 group-hover:opacity-100">
+          {/* Copy */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -85,21 +115,45 @@ export function UrlItem({ url, isNew = false }: UrlItemProps) {
             <TooltipContent>{copied ? "Copied!" : "Copy link"}</TooltipContent>
           </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
+          {/* Delete — two-step inline confirm */}
+          {confirming ? (
+            <>
               <Button
                 variant="ghost"
                 size="icon-sm"
-                disabled
-                aria-label="Delete URL"
+                onClick={handleDeleteClick}
+                aria-label="Confirm delete"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
               >
                 <Trash2 className="size-3.5" />
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>URL deletion coming soon</TooltipContent>
-          </Tooltip>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleCancelDelete}
+                aria-label="Cancel delete"
+              >
+                <X className="size-3.5" />
+              </Button>
+            </>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleDeleteClick}
+                  aria-label="Delete URL"
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Delete</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
     </TooltipProvider>
   )
 }
+

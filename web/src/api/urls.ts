@@ -17,3 +17,7 @@ export async function createUrl(original_url: string): Promise<ShortenedUrl> {
 export async function getUrls(): Promise<ShortenedUrl[]> {
   return apiRequest("/")
 }
+
+export async function deleteUrl(id: number): Promise<null> {
+  return apiRequest(`/${id}`, { method: "DELETE" })
+}

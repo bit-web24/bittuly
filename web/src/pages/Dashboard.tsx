@@ -1,7 +1,7 @@
 import * as React from "react"
 import { toast } from "sonner"
 import { Link2, Plus } from "lucide-react"
-import { createUrl, getUrls, type ShortenedUrl } from "@/api/urls"
+import { createUrl, deleteUrl, getUrls, type ShortenedUrl } from "@/api/urls"
 import { AppLayout } from "@/components/AppLayout"
 import { UrlItem } from "@/components/UrlItem"
 import { Button } from "@/components/ui/button"
@@ -61,6 +61,21 @@ export function Dashboard() {
       toast.error("Something went wrong. Please try again.")
     } finally {
       setIsShortening(false)
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    // Optimistic removal
+    setUrls((prev) => prev.filter((u) => u.id !== id))
+    try {
+      await deleteUrl(id)
+      toast.success("Link deleted.")
+    } catch {
+      // Revert on failure
+      toast.error("Failed to delete link. Please try again.")
+      getUrls()
+        .then(setUrls)
+        .catch(() => {})
     }
   }
 
@@ -134,6 +149,7 @@ export function Dashboard() {
                   key={url.id}
                   url={url}
                   isNew={newIds.has(url.id)}
+                  onDelete={handleDelete}
                 />
               ))}
             </div>

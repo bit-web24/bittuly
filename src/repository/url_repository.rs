@@ -42,6 +42,7 @@ pub async fn get_original_url(
 
     Ok(original_url)
 }
+
 pub async fn get_all_urls(db: &DbPool, user_id: Uuid) -> Result<Vec<Url>, sqlx::Error> {
     let urls = sqlx::query_as(
         "SELECT url_id, short_code, original_url, user_id, created_at, updated_at FROM urls WHERE user_id = $1",
@@ -52,3 +53,17 @@ pub async fn get_all_urls(db: &DbPool, user_id: Uuid) -> Result<Vec<Url>, sqlx::
 
     Ok(urls)
 }
+
+/// Deletes a URL by its numeric id, scoped to the owning user.
+/// Returns `true` if a row was deleted, `false` if nothing matched.
+pub async fn delete_url(db: &DbPool, url_id: i64, user_id: Uuid) -> Result<bool, sqlx::Error> {
+    let result =
+        sqlx::query("DELETE FROM urls WHERE url_id = $1 AND user_id = $2")
+            .bind(url_id)
+            .bind(user_id)
+            .execute(db)
+            .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
