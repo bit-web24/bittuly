@@ -6,6 +6,7 @@ import { VerifyOtp } from "@/pages/VerifyOtp"
 import { Dashboard } from "@/pages/Dashboard"
 import { Profile } from "@/pages/Profile"
 import { Settings } from "@/pages/Settings"
+import { Insights } from "@/pages/Insights"
 
 export function AppRouter() {
   return (
@@ -18,6 +19,14 @@ export function AppRouter() {
         element={
           <ProtectedRoute>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/insights"
+        element={
+          <ProtectedRoute>
+            <Insights />
           </ProtectedRoute>
         }
       />
