@@ -5,7 +5,7 @@ pub async fn shorten_url(
     db: &DbPool,
     original_url: &str,
     user_id: Uuid,
-) -> Result<Url, sqlx::Error> {
+) -> Result<Option<Url>, sqlx::Error> {
     url_repository::add_shorten_url(db, original_url, user_id).await
 }
 

@@ -39,8 +39,8 @@ pub async fn shorten_url(
         return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
     }
     match url_service::shorten_url(&db, &body.original_url, claims.sub).await {
-        Ok(url) => (StatusCode::CREATED, Json(url)).into_response(),
-        Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("23505") => (
+        Ok(Some(url)) => (StatusCode::CREATED, Json(url)).into_response(),
+        Ok(None) => (
             StatusCode::CONFLICT,
             Json(serde_json::json!({ "error": "You have already shortened this URL" })),
         )
