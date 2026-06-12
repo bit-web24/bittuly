@@ -99,12 +99,20 @@ pub async fn get_original_url(
 
 pub async fn delete_url_handler(
     State(db): State<DbPool>,
+    Extension(state): Extension<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(url_id): Path<i64>,
 ) -> impl IntoResponse {
     match url_service::delete_url(&db, url_id, claims.sub).await {
-        Ok(true) => StatusCode::NO_CONTENT.into_response(),
-        Ok(false) => StatusCode::NOT_FOUND.into_response(),
+        Ok(Some(short_code)) => {
+            // Evict from Redis cache — non-fatal if Redis is unavailable
+            let mut redis = state.redis.clone();
+            if let Err(e) = redis.del::<_, ()>(&short_code).await {
+                tracing::warn!("redis DEL {short_code} failed: {e}");
+            }
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(err) => {
             tracing::error!("{:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR.into_response()

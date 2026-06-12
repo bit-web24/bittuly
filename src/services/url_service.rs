@@ -20,7 +20,11 @@ pub async fn get_all_urls(db: &DbPool, user_id: Uuid) -> Result<Vec<Url>, sqlx::
     url_repository::get_all_urls(db, user_id).await
 }
 
-/// Returns `true` if deleted, `false` if not found or not owned by the user.
-pub async fn delete_url(db: &DbPool, url_id: i64, user_id: Uuid) -> Result<bool, sqlx::Error> {
+/// Returns `Some(short_code)` if deleted, `None` if not found or not owned by the user.
+pub async fn delete_url(
+    db: &DbPool,
+    url_id: i64,
+    user_id: Uuid,
+) -> Result<Option<String>, sqlx::Error> {
     url_repository::delete_url(db, url_id, user_id).await
 }
