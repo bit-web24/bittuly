@@ -10,6 +10,7 @@ pub struct Url {
     pub short_code: String,
     pub original_url: String,
     pub user_id: Uuid,
+    pub click_count: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

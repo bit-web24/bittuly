@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS urls (
   short_code TEXT UNIQUE,
   original_url TEXT NOT NULL,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  click_count BIGINT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
