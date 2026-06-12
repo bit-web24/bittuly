@@ -54,7 +54,7 @@ pub async fn get_original_url(
 ) -> impl IntoResponse {
     let mut redis = state.redis.clone();
 
-    // ── 1. Cache lookup ────────────────────────────────────────────────────
+    // Cache lookup
     let cached: Option<String> = match redis.get::<_, Option<String>>(&short_code).await {
         Ok(v) => v,
         Err(e) => {
@@ -72,13 +72,13 @@ pub async fn get_original_url(
         return Redirect::temporary(&original_url).into_response();
     }
 
-    // ── 2. Cache miss — query DB ───────────────────────────────────────────
+    // Cache miss — query DB
     tracing::debug!(short_code, "cache miss");
     match url_service::get_original_url(&db, &short_code).await {
         Ok(Some(original_url)) => {
             // Populate cache with 24 h TTL, non-fatal if Redis is down
             if let Err(e) = redis
-                .set_ex::<_, _, ()>(&short_code, &original_url, 86_400)
+                .set_ex::<_, _, ()>(&short_code, &original_url, 60 * 60 * 24)
                 .await
             {
                 tracing::warn!("redis set_ex failed: {e}");

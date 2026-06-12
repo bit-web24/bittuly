@@ -1,4 +1,4 @@
-use redis::{aio::ConnectionManager, Client, RedisResult};
+use redis::{Client, RedisResult, aio::ConnectionManager};
 
 /// Shared Redis handle for the entire application.
 ///
