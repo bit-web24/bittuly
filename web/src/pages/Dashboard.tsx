@@ -60,7 +60,7 @@ export function Dashboard() {
     } catch (err) {
       const apiError = err as { status?: number }
       if (apiError?.status === 409) {
-        toast.error("This URL has already been shortened.")
+        toast.error("You've already shortened this URL.")
       } else {
         toast.error("Something went wrong. Please try again.")
       }

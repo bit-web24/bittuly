@@ -42,7 +42,7 @@ pub async fn shorten_url(
         Ok(url) => (StatusCode::CREATED, Json(url)).into_response(),
         Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("23505") => (
             StatusCode::CONFLICT,
-            Json(serde_json::json!({ "error": "This URL has already been shortened" })),
+            Json(serde_json::json!({ "error": "You have already shortened this URL" })),
         )
             .into_response(),
         Err(err) => {

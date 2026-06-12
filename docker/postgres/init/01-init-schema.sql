@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS urls (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   click_count BIGINT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(original_url, user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_urls_user_id ON urls(user_id);
