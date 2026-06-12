@@ -13,7 +13,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use app::state::AppState;
 use config::settings::Settings;
-use db::postgres::init_pg_pool;
+use db::{postgres::init_pg_pool, redis::init_redis};
 use repository::url_repository;
 use routes::router::create_router;
 use tokio::{net::TcpListener, sync::mpsc};
@@ -34,9 +34,12 @@ async fn main() {
     let db = init_pg_pool(&settings.database_url)
         .await
         .expect("failed to connect to database");
+    let redis = init_redis(&settings.redis_url)
+        .await
+        .expect("failed to connect to redis");
 
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
-    let app_state = Arc::new(AppState::from(tx.clone()));
+    let app_state = Arc::new(AppState::new(tx.clone(), redis));
 
     // Consumer task: batch click events and flush to DB every 17 unique entries
     let consumer_db = db.clone();

@@ -6,6 +6,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Redirect},
 };
+use redis::AsyncCommands;
 use serde::Deserialize;
 use std::sync::Arc;
 use validator::Validate;
@@ -38,7 +39,12 @@ pub async fn shorten_url(
         return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
     }
     match url_service::shorten_url(&db, &body.original_url, claims.sub).await {
-        Ok(url) => (StatusCode::CREATED, Json(url)).into_response(),
+        Ok(Some(url)) => (StatusCode::CREATED, Json(url)).into_response(),
+        Ok(None) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": "You have already shortened this URL" })),
+        )
+            .into_response(),
         Err(err) => {
             tracing::error!("{:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -51,8 +57,38 @@ pub async fn get_original_url(
     Extension(state): Extension<Arc<AppState>>,
     Path(short_code): Path<String>,
 ) -> impl IntoResponse {
+    let mut redis = state.redis.clone();
+
+    // Cache lookup
+    let cached: Option<String> = match redis.get::<_, Option<String>>(&short_code).await {
+        Ok(v) => v,
+        Err(e) => {
+            // Redis unavailable — non-fatal, fall through to DB
+            tracing::warn!("redis get failed (falling back to db): {e}");
+            None
+        }
+    };
+
+    if let Some(original_url) = cached {
+        tracing::info!(short_code, "cache hit");
+        if let Err(e) = state.tx.send(short_code) {
+            tracing::warn!("click channel send failed: {e}");
+        }
+        return Redirect::temporary(&original_url).into_response();
+    }
+
+    // ── 2. Cache miss — query DB ───────────────────────────────────────────
+    tracing::info!(short_code, "cache miss");
     match url_service::get_original_url(&db, &short_code).await {
         Ok(Some(original_url)) => {
+            // Populate cache with 24 h TTL, non-fatal if Redis is down
+            if let Err(e) = redis
+                .set_ex::<_, _, ()>(&short_code, &original_url, 60 * 60 * 24)
+                .await
+            {
+                tracing::warn!("redis set_ex failed: {e}");
+            }
+
             if let Err(e) = state.tx.send(short_code) {
                 tracing::warn!("click channel send failed: {e}");
             }
@@ -68,12 +104,20 @@ pub async fn get_original_url(
 
 pub async fn delete_url_handler(
     State(db): State<DbPool>,
+    Extension(state): Extension<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
     Path(url_id): Path<i64>,
 ) -> impl IntoResponse {
     match url_service::delete_url(&db, url_id, claims.sub).await {
-        Ok(true) => StatusCode::NO_CONTENT.into_response(),
-        Ok(false) => StatusCode::NOT_FOUND.into_response(),
+        Ok(Some(short_code)) => {
+            // Evict from Redis cache — non-fatal if Redis is unavailable
+            let mut redis = state.redis.clone();
+            if let Err(e) = redis.del::<_, ()>(&short_code).await {
+                tracing::warn!("redis DEL {short_code} failed: {e}");
+            }
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(err) => {
             tracing::error!("{:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR.into_response()

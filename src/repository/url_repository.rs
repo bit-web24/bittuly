@@ -3,20 +3,46 @@ use std::collections::HashMap;
 use crate::{db::postgres::DbPool, models::Url};
 use uuid::Uuid;
 
+/// Creates a shortened URL.
+/// Returns `Ok(Some(url))` on success.
+/// Returns `Ok(None)` if this `original_url` was already shortened by `user_id`
+/// (avoids burning a BIGSERIAL url_id for a duplicate request).
 pub async fn add_shorten_url(
     db: &DbPool,
     original_url: &str,
     user_id: Uuid,
-) -> Result<Url, sqlx::Error> {
+) -> Result<Option<Url>, sqlx::Error> {
+    // Pre-check: avoid advancing the sequence on a duplicate
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM urls WHERE original_url = $1 AND user_id = $2)",
+    )
+    .bind(original_url)
+    .bind(user_id)
+    .fetch_one(db)
+    .await?;
+
+    if exists {
+        return Ok(None);
+    }
+
     let mut tx = db.begin().await?;
 
-    let url_id: i64 = sqlx::query_scalar(
+    let url_id: i64 = match sqlx::query_scalar(
         "INSERT INTO urls (original_url, user_id) VALUES ($1, $2) RETURNING url_id",
     )
     .bind(original_url)
     .bind(user_id)
     .fetch_one(&mut *tx)
-    .await?;
+    .await
+    {
+        Ok(id) => id,
+        // Race condition: another request snuck in between our SELECT and INSERT
+        Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("23505") => {
+            tx.rollback().await.ok();
+            return Ok(None);
+        }
+        Err(e) => return Err(e),
+    };
 
     let short_code = base62::encode(url_id as u128);
 
@@ -24,14 +50,14 @@ pub async fn add_shorten_url(
         "UPDATE urls SET short_code = $1 WHERE url_id = $2 \
          RETURNING url_id, short_code, original_url, user_id, click_count, created_at, updated_at",
     )
-        .bind(&short_code)
-        .bind(url_id)
-        .fetch_one(&mut *tx)
-        .await?;
+    .bind(&short_code)
+    .bind(url_id)
+    .fetch_one(&mut *tx)
+    .await?;
 
     tx.commit().await?;
 
-    Ok(url)
+    Ok(Some(url))
 }
 
 pub async fn get_original_url(
@@ -59,16 +85,21 @@ pub async fn get_all_urls(db: &DbPool, user_id: Uuid) -> Result<Vec<Url>, sqlx::
 }
 
 /// Deletes a URL by its numeric id, scoped to the owning user.
-/// Returns `true` if a row was deleted, `false` if nothing matched.
-pub async fn delete_url(db: &DbPool, url_id: i64, user_id: Uuid) -> Result<bool, sqlx::Error> {
-    let result =
-        sqlx::query("DELETE FROM urls WHERE url_id = $1 AND user_id = $2")
-            .bind(url_id)
-            .bind(user_id)
-            .execute(db)
-            .await?;
+/// Returns `Some(short_code)` if deleted, `None` if not found or not owned.
+pub async fn delete_url(
+    db: &DbPool,
+    url_id: i64,
+    user_id: Uuid,
+) -> Result<Option<String>, sqlx::Error> {
+    let row: Option<(String,)> = sqlx::query_as(
+        "DELETE FROM urls WHERE url_id = $1 AND user_id = $2 RETURNING short_code",
+    )
+    .bind(url_id)
+    .bind(user_id)
+    .fetch_optional(db)
+    .await?;
 
-    Ok(result.rows_affected() > 0)
+    Ok(row.map(|(short_code,)| short_code))
 }
 
 /// Flushes a batch of (short_code → click delta) into the database.
