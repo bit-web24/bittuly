@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Copy, Check, Trash2, ExternalLink, X } from "lucide-react"
+import { Copy, Check, Trash2, ExternalLink, X, BarChart2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -93,6 +93,12 @@ export function UrlItem({ url, isNew = false, onDelete }: UrlItemProps) {
             {url.original_url}
           </TooltipContent>
         </Tooltip>
+
+        {/* Click count */}
+        <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground mr-2">
+          <BarChart2 className="size-3.5" />
+          <span>{url.click_count} {url.click_count === 1 ? "click" : "clicks"}</span>
+        </div>
 
         {/* Actions */}
         <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-100 group-hover:opacity-100">

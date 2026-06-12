@@ -1,12 +1,14 @@
+use crate::{
+    app::state::AppState, db::postgres::DbPool, middlewares::jwt::Claims, services::url_service,
+};
 use axum::{
     extract::{Extension, Json, Path, State},
     http::StatusCode,
     response::{IntoResponse, Redirect},
 };
 use serde::Deserialize;
+use std::sync::Arc;
 use validator::Validate;
-
-use crate::{db::postgres::DbPool, middlewares::jwt::Claims, services::url_service};
 
 #[derive(Deserialize, Validate)]
 pub struct ShortenUrlRequest {
@@ -46,10 +48,16 @@ pub async fn shorten_url(
 
 pub async fn get_original_url(
     State(db): State<DbPool>,
+    Extension(state): Extension<Arc<AppState>>,
     Path(short_code): Path<String>,
 ) -> impl IntoResponse {
     match url_service::get_original_url(&db, &short_code).await {
-        Ok(Some(original_url)) => Redirect::temporary(&original_url).into_response(),
+        Ok(Some(original_url)) => {
+            if let Err(e) = state.tx.send(short_code) {
+                tracing::warn!("click channel send failed: {e}");
+            }
+            Redirect::temporary(&original_url).into_response()
+        }
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(err) => {
             tracing::error!("{:?}", err);
@@ -64,12 +72,11 @@ pub async fn delete_url_handler(
     Path(url_id): Path<i64>,
 ) -> impl IntoResponse {
     match url_service::delete_url(&db, url_id, claims.sub).await {
-        Ok(true)  => StatusCode::NO_CONTENT.into_response(),
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
         Ok(false) => StatusCode::NOT_FOUND.into_response(),
-        Err(err)  => {
+        Err(err) => {
             tracing::error!("{:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
 }
-

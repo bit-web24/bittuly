@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom"
-import { Link2 } from "lucide-react"
+import { Link2, PieChart } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -28,6 +28,7 @@ export function AppSidebar() {
 
   const navItems = [
     { label: "My Links", href: "/dashboard", icon: Link2 },
+    { label: "Insights", href: "/insights", icon: PieChart },
   ]
 
   return (
