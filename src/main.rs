@@ -32,8 +32,8 @@ async fn main() {
 
     if let Err(err) = run(app_state).await {
         eprintln!("ApplicationError: {err}");
-        consumer_handler.await.unwrap();
         drop(tx);
+        consumer_handler.await.unwrap();
         std::process::exit(1);
     }
 }
