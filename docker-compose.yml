@@ -20,7 +20,11 @@ services:
   redis:
     image: redis:latest
     container_name: bittuly-redis
-    command: redis-server --loglevel warning
+    command: >
+      redis-server
+      --loglevel warning
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
     healthcheck:
