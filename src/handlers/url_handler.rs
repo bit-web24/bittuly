@@ -40,6 +40,11 @@ pub async fn shorten_url(
     }
     match url_service::shorten_url(&db, &body.original_url, claims.sub).await {
         Ok(url) => (StatusCode::CREATED, Json(url)).into_response(),
+        Err(sqlx::Error::Database(e)) if e.code().as_deref() == Some("23505") => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": "This URL has already been shortened" })),
+        )
+            .into_response(),
         Err(err) => {
             tracing::error!("{:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -65,15 +70,15 @@ pub async fn get_original_url(
     };
 
     if let Some(original_url) = cached {
-        tracing::debug!(short_code, "cache hit");
+        tracing::info!(short_code, "cache hit");
         if let Err(e) = state.tx.send(short_code) {
             tracing::warn!("click channel send failed: {e}");
         }
         return Redirect::temporary(&original_url).into_response();
     }
 
-    // Cache miss — query DB
-    tracing::debug!(short_code, "cache miss");
+    // ── 2. Cache miss — query DB ───────────────────────────────────────────
+    tracing::info!(short_code, "cache miss");
     match url_service::get_original_url(&db, &short_code).await {
         Ok(Some(original_url)) => {
             // Populate cache with 24 h TTL, non-fatal if Redis is down

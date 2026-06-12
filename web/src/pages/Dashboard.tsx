@@ -57,8 +57,13 @@ export function Dashboard() {
           return next
         })
       }, 1000)
-    } catch {
-      toast.error("Something went wrong. Please try again.")
+    } catch (err) {
+      const apiError = err as { status?: number }
+      if (apiError?.status === 409) {
+        toast.error("This URL has already been shortened.")
+      } else {
+        toast.error("Something went wrong. Please try again.")
+      }
     } finally {
       setIsShortening(false)
     }
