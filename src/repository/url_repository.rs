@@ -73,22 +73,28 @@ pub async fn delete_url(db: &DbPool, url_id: i64, user_id: Uuid) -> Result<bool,
 
 /// Flushes a batch of (short_code → click delta) into the database.
 /// Called only by the consumer task — not exposed through the service layer.
-/// All updates run inside a single transaction; max batch size is 17.
+/// Uses a single unnest-based UPDATE — one query, one round-trip, no loop.
 pub async fn increment_click_counts(
     db: &DbPool,
     batch: &HashMap<String, u64>,
 ) -> Result<(), sqlx::Error> {
-    let mut tx = db.begin().await?;
-    for (short_code, &count) in batch {
-        sqlx::query(
-            "UPDATE urls SET click_count = click_count + $1 WHERE short_code = $2",
-        )
-        .bind(count as i64)
-        .bind(short_code)
-        .execute(&mut *tx)
-        .await?;
-    }
-    tx.commit().await?;
+    let (codes, deltas): (Vec<String>, Vec<i64>) = batch
+        .iter()
+        .map(|(code, &count)| (code.clone(), count as i64))
+        .unzip();
+
+    sqlx::query(
+        "UPDATE urls \
+         SET click_count = click_count + d.delta \
+         FROM (SELECT unnest($1::text[]) AS code, \
+                      unnest($2::bigint[]) AS delta) AS d \
+         WHERE urls.short_code = d.code",
+    )
+    .bind(&codes)
+    .bind(&deltas)
+    .execute(db)
+    .await?;
+
     Ok(())
 }
 
