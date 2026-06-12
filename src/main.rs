@@ -42,16 +42,18 @@ async fn main() {
     let consumer_db = db.clone();
     let consumer_handler = tokio::spawn(async move {
         let mut batch: HashMap<String, u64> = HashMap::new();
+        let mut total_clicks = 0;
 
         while let Some(short_code) = rx.recv().await {
             *batch.entry(short_code).or_insert(0) += 1;
+            total_clicks += 1;
 
-            if batch.len() >= 17 {
-                if let Err(e) = url_repository::increment_click_counts(&consumer_db, &batch).await
-                {
+            if total_clicks >= 17 {
+                if let Err(e) = url_repository::increment_click_counts(&consumer_db, &batch).await {
                     tracing::error!("click count flush failed: {e}");
                 }
                 batch.clear();
+                total_clicks = 0;
             }
         }
 
