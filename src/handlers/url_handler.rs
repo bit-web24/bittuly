@@ -6,6 +6,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Redirect},
 };
+use redis::AsyncCommands;
 use serde::Deserialize;
 use std::sync::Arc;
 use validator::Validate;
@@ -51,8 +52,38 @@ pub async fn get_original_url(
     Extension(state): Extension<Arc<AppState>>,
     Path(short_code): Path<String>,
 ) -> impl IntoResponse {
+    let mut redis = state.redis.clone();
+
+    // ── 1. Cache lookup ────────────────────────────────────────────────────
+    let cached: Option<String> = match redis.get::<_, Option<String>>(&short_code).await {
+        Ok(v) => v,
+        Err(e) => {
+            // Redis unavailable — non-fatal, fall through to DB
+            tracing::warn!("redis get failed (falling back to db): {e}");
+            None
+        }
+    };
+
+    if let Some(original_url) = cached {
+        tracing::debug!(short_code, "cache hit");
+        if let Err(e) = state.tx.send(short_code) {
+            tracing::warn!("click channel send failed: {e}");
+        }
+        return Redirect::temporary(&original_url).into_response();
+    }
+
+    // ── 2. Cache miss — query DB ───────────────────────────────────────────
+    tracing::debug!(short_code, "cache miss");
     match url_service::get_original_url(&db, &short_code).await {
         Ok(Some(original_url)) => {
+            // Populate cache with 24 h TTL, non-fatal if Redis is down
+            if let Err(e) = redis
+                .set_ex::<_, _, ()>(&short_code, &original_url, 86_400)
+                .await
+            {
+                tracing::warn!("redis set_ex failed: {e}");
+            }
+
             if let Err(e) = state.tx.send(short_code) {
                 tracing::warn!("click channel send failed: {e}");
             }
