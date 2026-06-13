@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom"
-import { Link2, PieChart } from "lucide-react"
+import { Link2, PieChart, Activity } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -27,8 +27,9 @@ export function AppSidebar() {
   const { user } = useAuth()
 
   const navItems = [
-    { label: "My Links", href: "/dashboard", icon: Link2 },
-    { label: "Insights", href: "/insights", icon: PieChart },
+    { label: "My Links",      href: "/dashboard", icon: Link2    },
+    { label: "Insights",      href: "/insights",  icon: PieChart },
+    { label: "System Health", href: "/health",    icon: Activity },
   ]
 
   return (

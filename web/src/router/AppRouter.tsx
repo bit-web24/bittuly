@@ -7,6 +7,7 @@ import { Dashboard } from "@/pages/Dashboard"
 import { Profile } from "@/pages/Profile"
 import { Settings } from "@/pages/Settings"
 import { Insights } from "@/pages/Insights"
+import { Health } from "@/pages/Health"
 
 export function AppRouter() {
   return (
@@ -43,6 +44,14 @@ export function AppRouter() {
         element={
           <ProtectedRoute>
             <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/health"
+        element={
+          <ProtectedRoute>
+            <Health />
           </ProtectedRoute>
         }
       />
