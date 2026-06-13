@@ -1,7 +1,7 @@
 import * as React from "react"
 import { toast } from "sonner"
-import { Link2, Plus } from "lucide-react"
-import { createUrl, deleteUrl, getUrls, type ShortenedUrl } from "@/api/urls"
+import { Link2, Plus, ChevronsDown } from "lucide-react"
+import { createUrl, deleteUrl, getUrlsPage, type ShortenedUrl } from "@/api/urls"
 import { AppLayout } from "@/components/AppLayout"
 import { UrlItem } from "@/components/UrlItem"
 import { Button } from "@/components/ui/button"
@@ -25,15 +25,37 @@ export function Dashboard() {
   const [inputError, setInputError] = React.useState(false)
   const [isShortening, setIsShortening] = React.useState(false)
   const [isLoadingUrls, setIsLoadingUrls] = React.useState(true)
+  const [isLoadingMore, setIsLoadingMore] = React.useState(false)
+  const [nextCursor, setNextCursor] = React.useState<string | null>(null)
+  const [hasMore, setHasMore] = React.useState(false)
   const inputRef = React.useRef<HTMLInputElement>(null)
 
-  // Load URLs on mount
+  // Load first page on mount
   React.useEffect(() => {
-    getUrls()
-      .then((data) => setUrls(data))
+    getUrlsPage(null, 20)
+      .then((page) => {
+        setUrls(page.urls)
+        setNextCursor(page.next_cursor)
+        setHasMore(page.next_cursor !== null)
+      })
       .catch(() => toast.error("Failed to load URLs."))
       .finally(() => setIsLoadingUrls(false))
   }, [])
+
+  const handleLoadMore = async () => {
+    if (!nextCursor || isLoadingMore) return
+    setIsLoadingMore(true)
+    try {
+      const page = await getUrlsPage(nextCursor, 20)
+      setUrls((prev) => [...prev, ...page.urls])
+      setNextCursor(page.next_cursor)
+      setHasMore(page.next_cursor !== null)
+    } catch {
+      toast.error("Failed to load more links.")
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
 
   const handleShorten = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -47,6 +69,7 @@ export function Dashboard() {
     setIsShortening(true)
     try {
       const created = await createUrl(trimmed)
+      // Prepend new URL — doesn't disturb pagination cursor
       setUrls((prev) => [created, ...prev])
       setNewIds((prev) => new Set(prev).add(created.id))
       setInputUrl("")
@@ -70,19 +93,22 @@ export function Dashboard() {
   }
 
   const handleDelete = async (id: number) => {
-    // Optimistic removal
     setUrls((prev) => prev.filter((u) => u.id !== id))
     try {
       await deleteUrl(id)
       toast.success("Link deleted.")
     } catch {
-      // Revert on failure
       toast.error("Failed to delete link. Please try again.")
-      getUrls()
-        .then(setUrls)
+      getUrlsPage(null, 20)
+        .then((page) => {
+          setUrls(page.urls)
+          setNextCursor(page.next_cursor)
+          setHasMore(page.next_cursor !== null)
+        })
         .catch(() => {})
     }
   }
+
 
   return (
     <AppLayout title="My Links">
@@ -157,6 +183,25 @@ export function Dashboard() {
                   onDelete={handleDelete}
                 />
               ))}
+
+              {/* Load more */}
+              {hasMore && (
+                <div className="flex justify-center pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={handleLoadMore}
+                    disabled={isLoadingMore}
+                    className="gap-2"
+                  >
+                    {isLoadingMore ? (
+                      <Spinner className="size-4" />
+                    ) : (
+                      <ChevronsDown className="size-4" />
+                    )}
+                    {isLoadingMore ? "Loading…" : "Load more"}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

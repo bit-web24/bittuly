@@ -72,16 +72,57 @@ pub async fn get_original_url(
     Ok(original_url)
 }
 
-pub async fn get_all_urls(db: &DbPool, user_id: Uuid) -> Result<Vec<Url>, sqlx::Error> {
-    let urls = sqlx::query_as(
-        "SELECT url_id, short_code, original_url, user_id, click_count, created_at, updated_at \
-         FROM urls WHERE user_id = $1 ORDER BY created_at DESC",
+/// One page of URLs for a user.
+pub struct UrlsPage {
+    pub urls: Vec<Url>,
+    /// Hex-encoded `url_id` of the last item; `None` means no further pages.
+    pub next_cursor: Option<String>,
+}
+
+/// Fetches one page of a user's URLs ordered by `url_id DESC` (newest first).
+///
+/// `cursor`  — opaque value returned by the previous call; pass `None` for the
+///             first page.
+/// `limit`   — page size (clamped to 1–100 internally).
+///
+/// Internally fetches `limit + 1` rows so it can determine whether a next page
+/// exists without a separate COUNT query.
+pub async fn get_urls_page(
+    db: &DbPool,
+    user_id: Uuid,
+    cursor: Option<i64>,
+    limit: i64,
+) -> Result<UrlsPage, sqlx::Error> {
+    let limit = limit.clamp(1, 100);
+
+    let rows: Vec<Url> = sqlx::query_as(
+        "SELECT url_id, short_code, original_url, user_id, click_count, created_at, updated_at
+         FROM urls
+         WHERE user_id = $1
+           AND ($2::bigint IS NULL OR url_id < $2)
+         ORDER BY url_id DESC
+         LIMIT $3",
     )
     .bind(user_id)
+    .bind(cursor)
+    .bind(limit + 1)          // fetch one extra to detect next page
     .fetch_all(db)
     .await?;
 
-    Ok(urls)
+    let has_next = rows.len() as i64 > limit;
+    let mut urls = rows;
+    if has_next {
+        urls.pop(); // discard the sentinel item
+    }
+
+    let next_cursor = if has_next {
+        // encode as hex so the internal int is opaque to API consumers
+        urls.last().map(|u| format!("{:x}", u.url_id))
+    } else {
+        None
+    };
+
+    Ok(UrlsPage { urls, next_cursor })
 }
 
 /// Deletes a URL by its numeric id, scoped to the owning user.

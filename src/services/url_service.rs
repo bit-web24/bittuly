@@ -16,8 +16,13 @@ pub async fn get_original_url(
     url_repository::get_original_url(db, short_code).await
 }
 
-pub async fn get_all_urls(db: &DbPool, user_id: Uuid) -> Result<Vec<Url>, sqlx::Error> {
-    url_repository::get_all_urls(db, user_id).await
+pub async fn get_urls_page(
+    db: &DbPool,
+    user_id: Uuid,
+    cursor: Option<i64>,
+    limit: i64,
+) -> Result<url_repository::UrlsPage, sqlx::Error> {
+    url_repository::get_urls_page(db, user_id, cursor, limit).await
 }
 
 /// Returns `Some(short_code)` if deleted, `None` if not found or not owned by the user.

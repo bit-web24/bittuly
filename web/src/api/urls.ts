@@ -8,6 +8,11 @@ export interface ShortenedUrl {
   created_at: string
 }
 
+export interface UrlsPage {
+  urls: ShortenedUrl[]
+  next_cursor: string | null
+}
+
 export async function createUrl(original_url: string): Promise<ShortenedUrl> {
   return apiRequest("/", {
     method: "POST",
@@ -15,8 +20,21 @@ export async function createUrl(original_url: string): Promise<ShortenedUrl> {
   })
 }
 
+export async function getUrlsPage(
+  cursor?: string | null,
+  limit = 20
+): Promise<UrlsPage> {
+  const params = new URLSearchParams()
+  if (cursor) params.set("cursor", cursor)
+  params.set("limit", String(limit))
+  return apiRequest(`/?${params.toString()}`)
+}
+
+/** Convenience: fetch all URLs for non-paginated views (Insights). */
 export async function getUrls(): Promise<ShortenedUrl[]> {
-  return apiRequest("/")
+  const params = new URLSearchParams({ limit: "100" })
+  const page = await apiRequest<UrlsPage>(`/?${params.toString()}`)
+  return page.urls
 }
 
 export async function deleteUrl(id: number): Promise<null> {

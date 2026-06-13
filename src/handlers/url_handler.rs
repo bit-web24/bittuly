@@ -2,14 +2,69 @@ use crate::{
     app::state::AppState, db::postgres::DbPool, middlewares::jwt::Claims, services::url_service,
 };
 use axum::{
-    extract::{Extension, Json, Path, State},
+    extract::{Extension, Json, Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Redirect},
 };
 use redis::AsyncCommands;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use validator::Validate;
+
+const DEFAULT_PAGE_LIMIT: i64 = 20;
+
+#[derive(Deserialize)]
+pub struct PaginationParams {
+    /// Opaque cursor returned by the previous page response.
+    pub cursor: Option<String>,
+    /// Number of items per page (default 20, max 100).
+    pub limit: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct UrlsPageResponse {
+    pub urls: Vec<crate::models::Url>,
+    pub next_cursor: Option<String>,
+}
+
+pub async fn get_all_urls(
+    State(db): State<DbPool>,
+    Extension(claims): Extension<Claims>,
+    Query(params): Query<PaginationParams>,
+) -> impl IntoResponse {
+    // Decode the hex cursor → i64
+    let cursor: Option<i64> = match params.cursor.as_deref() {
+        None | Some("") => None,
+        Some(hex) => match i64::from_str_radix(hex, 16) {
+            Ok(id) => Some(id),
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": "invalid cursor" })),
+                )
+                    .into_response()
+            }
+        },
+    };
+
+    let limit = params.limit.unwrap_or(DEFAULT_PAGE_LIMIT);
+
+    match url_service::get_urls_page(&db, claims.sub, cursor, limit).await {
+        Ok(page) => (
+            StatusCode::OK,
+            Json(UrlsPageResponse {
+                urls: page.urls,
+                next_cursor: page.next_cursor,
+            }),
+        )
+            .into_response(),
+        Err(err) => {
+            tracing::error!("{:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
 
 #[derive(Deserialize, Validate)]
 pub struct ShortenUrlRequest {
@@ -17,18 +72,7 @@ pub struct ShortenUrlRequest {
     pub original_url: String,
 }
 
-pub async fn get_all_urls(
-    State(db): State<DbPool>,
-    Extension(claims): Extension<Claims>,
-) -> impl IntoResponse {
-    match url_service::get_all_urls(&db, claims.sub).await {
-        Ok(urls) => (StatusCode::OK, Json(urls)).into_response(),
-        Err(err) => {
-            tracing::error!("{:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
-    }
-}
+
 
 pub async fn shorten_url(
     State(db): State<DbPool>,
