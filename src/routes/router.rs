@@ -10,7 +10,10 @@ use tower_http::trace::TraceLayer;
 use crate::app::state::AppState;
 use crate::{
     db::postgres::DbPool,
-    handlers::debug_handler::debug_otp_store_handler,
+    handlers::{
+        debug_handler::debug_otp_store_handler,
+        health_handler::health,
+    },
     routes::{url_routes::url_routes, user_routes::user_routes},
 };
 
@@ -32,10 +35,9 @@ pub fn create_router(db: DbPool, mode: &str, cors_origin: &str, state: Arc<AppSt
         .allow_credentials(true);
 
     let mut router = Router::new()
+        .route("/health", get(health))   // public — no auth
         .merge(url_routes())
         .nest("/users", user_routes())
-        // Inject AppState as an Extension so handlers can access tx
-        // without changing the primary state type (DbPool)
         .layer(Extension(state));
 
     if mode == "development" {
