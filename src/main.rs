@@ -41,29 +41,61 @@ async fn main() {
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
     let app_state = Arc::new(AppState::new(tx.clone(), redis));
 
-    // Consumer task: batch click events and flush to DB every 17 unique entries
+    // Consumer task — two flush triggers:
+    //   1. Size  : every 17 accumulated click events
+    //   2. Timer : every 30 seconds (so low-traffic links are never stuck)
     let consumer_db = db.clone();
     let consumer_handler = tokio::spawn(async move {
         let mut batch: HashMap<String, u64> = HashMap::new();
-        let mut total_clicks = 0;
+        let mut total_clicks: u64 = 0;
 
-        while let Some(short_code) = rx.recv().await {
-            *batch.entry(short_code).or_insert(0) += 1;
-            total_clicks += 1;
+        let mut flush_interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+        // Consume the immediate first tick so the timer starts 30 s from now,
+        // not from the moment the task spawns.
+        flush_interval.tick().await;
 
-            if total_clicks >= 17 {
-                if let Err(e) = url_repository::increment_click_counts(&consumer_db, &batch).await {
-                    tracing::error!("click count flush failed: {e}");
+        loop {
+            tokio::select! {
+                // ── Arm 1: new click event from the channel ──────────────────
+                maybe_code = rx.recv() => {
+                    match maybe_code {
+                        Some(short_code) => {
+                            *batch.entry(short_code).or_insert(0) += 1;
+                            total_clicks += 1;
+
+                            if total_clicks >= 17 {
+                                match url_repository::increment_click_counts(&consumer_db, &batch).await {
+                                    Ok(()) => tracing::info!(total_clicks, "click batch flushed (size trigger)"),
+                                    Err(e) => tracing::error!("click batch flush failed: {e}"),
+                                }
+                                batch.clear();
+                                total_clicks = 0;
+                            }
+                        }
+                        None => {
+                            // Channel closed (server shutting down) — drain remainder
+                            if !batch.is_empty() {
+                                match url_repository::increment_click_counts(&consumer_db, &batch).await {
+                                    Ok(()) => tracing::info!(total_clicks, "click batch flushed (shutdown drain)"),
+                                    Err(e) => tracing::error!("click batch final flush failed: {e}"),
+                                }
+                            }
+                            break;
+                        }
+                    }
                 }
-                batch.clear();
-                total_clicks = 0;
-            }
-        }
 
-        // Channel closed — drain whatever is left
-        if !batch.is_empty() {
-            if let Err(e) = url_repository::increment_click_counts(&consumer_db, &batch).await {
-                tracing::error!("click count final flush failed: {e}");
+                // ── Arm 2: periodic 30-second flush ──────────────────────────
+                _ = flush_interval.tick() => {
+                    if !batch.is_empty() {
+                        match url_repository::increment_click_counts(&consumer_db, &batch).await {
+                            Ok(()) => tracing::info!(total_clicks, "click batch flushed (interval trigger)"),
+                            Err(e) => tracing::error!("click batch interval flush failed: {e}"),
+                        }
+                        batch.clear();
+                        total_clicks = 0;
+                    }
+                }
             }
         }
     });
