@@ -92,20 +92,25 @@ pub async fn get_urls_page(
     user_id: Uuid,
     cursor: Option<i64>,
     limit: i64,
+    search: Option<String>,
 ) -> Result<UrlsPage, sqlx::Error> {
     let limit = limit.clamp(1, 100);
+
+    let search_pattern = search.map(|s| format!("%{}%", s));
 
     let rows: Vec<Url> = sqlx::query_as(
         "SELECT url_id, short_code, original_url, user_id, click_count, created_at, updated_at
          FROM urls
          WHERE user_id = $1
            AND ($2::bigint IS NULL OR url_id < $2)
+           AND ($4::text IS NULL OR original_url ILIKE $4 OR short_code ILIKE $4)
          ORDER BY url_id DESC
          LIMIT $3",
     )
     .bind(user_id)
     .bind(cursor)
     .bind(limit + 1)          // fetch one extra to detect next page
+    .bind(search_pattern)
     .fetch_all(db)
     .await?;
 

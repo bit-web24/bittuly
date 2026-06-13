@@ -19,6 +19,8 @@ pub struct PaginationParams {
     pub cursor: Option<String>,
     /// Number of items per page (default 20, max 100).
     pub limit: Option<i64>,
+    /// Search query to filter URLs.
+    pub search: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -48,8 +50,9 @@ pub async fn get_all_urls(
     };
 
     let limit = params.limit.unwrap_or(DEFAULT_PAGE_LIMIT);
+    let search = params.search.filter(|s| !s.trim().is_empty());
 
-    match url_service::get_urls_page(&db, claims.sub, cursor, limit).await {
+    match url_service::get_urls_page(&db, claims.sub, cursor, limit, search).await {
         Ok(page) => (
             StatusCode::OK,
             Json(UrlsPageResponse {

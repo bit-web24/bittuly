@@ -22,11 +22,13 @@ export async function createUrl(original_url: string): Promise<ShortenedUrl> {
 
 export async function getUrlsPage(
   cursor?: string | null,
-  limit = 20
+  limit = 20,
+  search?: string
 ): Promise<UrlsPage> {
   const params = new URLSearchParams()
   if (cursor) params.set("cursor", cursor)
   params.set("limit", String(limit))
+  if (search && search.trim()) params.set("search", search.trim())
   return apiRequest(`/?${params.toString()}`)
 }
 

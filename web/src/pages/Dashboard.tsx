@@ -1,6 +1,6 @@
 import * as React from "react"
 import { toast } from "sonner"
-import { Link2, Plus, ChevronsDown } from "lucide-react"
+import { Link2, Plus, ChevronsDown, Search } from "lucide-react"
 import { createUrl, deleteUrl, getUrlsPage, type ShortenedUrl } from "@/api/urls"
 import { AppLayout } from "@/components/AppLayout"
 import { UrlItem } from "@/components/UrlItem"
@@ -28,11 +28,20 @@ export function Dashboard() {
   const [isLoadingMore, setIsLoadingMore] = React.useState(false)
   const [nextCursor, setNextCursor] = React.useState<string | null>(null)
   const [hasMore, setHasMore] = React.useState(false)
+  const [searchQuery, setSearchQuery] = React.useState("")
+  const [debouncedSearch, setDebouncedSearch] = React.useState("")
   const inputRef = React.useRef<HTMLInputElement>(null)
 
-  // Load first page on mount
+  // Debounce search input
   React.useEffect(() => {
-    getUrlsPage(null, 20)
+    const handler = setTimeout(() => setDebouncedSearch(searchQuery), 300)
+    return () => clearTimeout(handler)
+  }, [searchQuery])
+
+  // Load first page on mount and when search changes
+  React.useEffect(() => {
+    setIsLoadingUrls(true)
+    getUrlsPage(null, 20, debouncedSearch)
       .then((page) => {
         setUrls(page.urls)
         setNextCursor(page.next_cursor)
@@ -40,13 +49,13 @@ export function Dashboard() {
       })
       .catch(() => toast.error("Failed to load URLs."))
       .finally(() => setIsLoadingUrls(false))
-  }, [])
+  }, [debouncedSearch])
 
   const handleLoadMore = async () => {
     if (!nextCursor || isLoadingMore) return
     setIsLoadingMore(true)
     try {
-      const page = await getUrlsPage(nextCursor, 20)
+      const page = await getUrlsPage(nextCursor, 20, debouncedSearch)
       setUrls((prev) => [...prev, ...page.urls])
       setNextCursor(page.next_cursor)
       setHasMore(page.next_cursor !== null)
@@ -152,11 +161,22 @@ export function Dashboard() {
 
         {/* URL list */}
         <div>
-          <div className="mb-3 flex items-center gap-2">
-            <h2 className="text-sm font-semibold">Your links</h2>
-            {!isLoadingUrls && (
-              <Badge variant="secondary">{urls.length}</Badge>
-            )}
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold">Your links</h2>
+              {!isLoadingUrls && (
+                <Badge variant="secondary">{urls.length}</Badge>
+              )}
+            </div>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+              <Input
+                placeholder="Search links..."
+                className="h-9 pl-9 sm:w-64"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
           </div>
 
           {isLoadingUrls ? (

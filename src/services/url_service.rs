@@ -21,8 +21,9 @@ pub async fn get_urls_page(
     user_id: Uuid,
     cursor: Option<i64>,
     limit: i64,
+    search: Option<String>,
 ) -> Result<url_repository::UrlsPage, sqlx::Error> {
-    url_repository::get_urls_page(db, user_id, cursor, limit).await
+    url_repository::get_urls_page(db, user_id, cursor, limit, search).await
 }
 
 /// Returns `Some(short_code)` if deleted, `None` if not found or not owned by the user.
