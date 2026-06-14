@@ -1,0 +1,3 @@
+[alias]
+dev-auth = ["watch", "-c", "-w", "services/auth-service", "-w", "libs/shared", "-x", "run -p auth-service"]
+dev-urls = ["watch", "-c", "-w", "services/url-service", "-w", "libs/shared", "-x", "run -p url-service"]

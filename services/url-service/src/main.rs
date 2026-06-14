@@ -40,7 +40,7 @@ async fn main() {
     let consumer_db = db.clone();
     let (tx, rx) = mpsc::unbounded_channel::<String>();
     let consumer_handler = consumer::spawn_consumer(rx, consumer_db);
-    let url_state = Arc::new(models::UrlState::new(tx.clone(), redis, db));
+    let url_state = Arc::new(models::UrlState::new(tx.clone(), redis, db, settings.cors_origin.clone()));
 
     let cors = CorsLayer::new()
         .allow_origin(
@@ -49,8 +49,13 @@ async fn main() {
                 .parse::<axum::http::HeaderValue>()
                 .expect("Invalid CORS origin"),
         )
-        .allow_methods(Any)
-        .allow_headers(Any)
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::DELETE,
+        ])
+        .allow_headers([axum::http::header::CONTENT_TYPE])
         .allow_credentials(true);
 
     let app = routes::url_routes()
@@ -64,8 +69,8 @@ async fn main() {
             .expect("failed to bind listener");
 
     println!(
-        "listening on {} [mode={} cors={}]",
-        settings.server_addr, settings.mode, settings.cors_origin
+        "Url service listening on {}:{} [mode={} cors={}]",
+        settings.server_addr, settings.server_port, settings.mode, settings.cors_origin
     );
 
     if let Err(err) = axum::serve(listener, app).await {

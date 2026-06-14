@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Copy, Check, Trash2, ExternalLink, X, BarChart2 } from "lucide-react"
+import { Copy, Check, Trash2, ExternalLink, BarChart2, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -9,8 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import type { ShortenedUrl } from "@/api/urls"
-
-const BASE_URL = "http://localhost:3000"
+import { URLS_BASE_URL } from "@/api/client"
 
 interface UrlItemProps {
   url: ShortenedUrl
@@ -22,7 +21,7 @@ export function UrlItem({ url, isNew = false, onDelete }: UrlItemProps) {
   const [copied, setCopied] = React.useState(false)
   const [confirming, setConfirming] = React.useState(false)
   const confirmTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-  const shortUrl = `${BASE_URL}/${url.short_code}`
+  const shortUrl = `${URLS_BASE_URL}/${url.short_code}`
 
   const handleCopy = async () => {
     try {

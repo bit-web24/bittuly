@@ -16,15 +16,17 @@ pub struct UrlState {
     pub tx: ClickSender,
     pub redis: RedisConn,
     pub started_at: Instant,
+    pub cors_origin: String,
 }
 
 impl UrlState {
-    pub fn new(tx: ClickSender, redis: RedisConn, db: PgPool) -> Self {
+    pub fn new(tx: ClickSender, redis: RedisConn, db: PgPool, cors_origin: String) -> Self {
         Self {
             db,
             tx,
             redis,
             started_at: Instant::now(),
+            cors_origin,
         }
     }
 }

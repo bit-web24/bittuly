@@ -31,7 +31,7 @@ async fn main() {
         .expect("Failed to connect to Database");
 
     let auth_state = Arc::new(models::AuthState::new(db));
-    
+
     let cors = CorsLayer::new()
         .allow_origin(
             settings
@@ -39,8 +39,13 @@ async fn main() {
                 .parse::<axum::http::HeaderValue>()
                 .expect("Invalid CORS origin"),
         )
-        .allow_methods(Any)
-        .allow_headers(Any)
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::DELETE,
+        ])
+        .allow_headers([axum::http::header::CONTENT_TYPE])
         .allow_credentials(true);
 
     let app = axum::Router::new()
@@ -55,8 +60,8 @@ async fn main() {
             .expect("failed to bind listener");
 
     println!(
-        "Auth service listening on {} [mode={} cors={}]",
-        settings.server_addr, settings.mode, settings.cors_origin
+        "Auth service listening on {}:{} [mode={} cors={}]",
+        settings.server_addr, settings.server_port, settings.mode, settings.cors_origin
     );
 
     if let Err(err) = axum::serve(listener, app).await {
