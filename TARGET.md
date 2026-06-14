@@ -66,7 +66,7 @@ Internet (HTTPS only)
             ┌──────────────┐         ┌──────────────────┐
             │  pg-auth     │         │    pg-urls        │
             │  Postgres 17 │         │    Postgres 17    │
-            │  users, otps │         │    urls           │
+            │      users   │         │    urls           │
             └──────────────┘         └──────────────────┘
 
     ┌────────────────────────┐     ┌──────────────────────────┐
@@ -89,7 +89,7 @@ Internet (HTTPS only)
 
 | Property | Value |
 |---|---|
-| Database | `pg-auth` — tables: `users`, `otps` |
+| Database | `pg-auth` — tables: `users` |
 | Replicas | min 2, max 5 (HPA on CPU > 70%) |
 | CPU | 100m request / 500m limit |
 | Memory | 64 Mi request / 256 Mi limit |
@@ -267,14 +267,6 @@ CREATE TABLE users (
     password   VARCHAR(255) NOT NULL,            -- bcrypt
     created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE otps (
-    otp_id     BIGSERIAL    PRIMARY KEY,
-    user_id    UUID         NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    code       VARCHAR(6)   NOT NULL,
-    expires_at TIMESTAMPTZ  NOT NULL,
-    used       BOOLEAN      NOT NULL DEFAULT FALSE
 );
 ```
 
@@ -528,7 +520,7 @@ Each service exposes `GET /metrics` using the `metrics` + `metrics-exporter-prom
 ### Phase 1 — Service Extraction & DB Split
 **Goal:** Two fully independent services with separate databases.
 
-- [ ] `pg-auth`: users + otps tables only
+- [ ] `pg-auth`: users table only
 - [ ] `pg-urls`: urls table only, `user_id` is a plain UUID column (no FK)
 - [ ] `auth-service`: issues JWTs; validates via `/api/auth/validate`
 - [ ] `url-service`: reads `X-User-Id` header injected by gateway (no JWT parsing)
