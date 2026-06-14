@@ -2,11 +2,12 @@ use crate::handlers::{
     create_user, delete_user, get_user_by_id, login, logout, request_signup_handler, update_user,
     verify_otp_handler,
 };
+use crate::models::AuthStateRef;
 use axum::routing::{get, post};
 use axum::{Router, middleware};
-use shared::{jwt::jwt_auth, postgres::DbPool};
+use shared::jwt::jwt_auth;
 
-pub fn user_routes() -> Router<DbPool> {
+pub fn user_routes() -> Router<AuthStateRef> {
     let protected = Router::new()
         .route(
             "/{user_id}",

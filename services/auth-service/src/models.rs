@@ -1,9 +1,18 @@
+use std::sync::Arc;
+
 use chrono::DateTime;
 use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
+use sqlx::PgPool;
 use uuid::Uuid;
 use validator::Validate;
+
+pub struct AuthState {
+    pub db: PgPool,
+}
+
+pub type AuthStateRef = Arc<AuthState>;
 
 #[derive(sqlx::FromRow, Serialize)]
 pub struct User {

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 shared = { path = "../../libs/shared" }
 axum = "0.8.9"
 uuid = { version = "1.23.2", features = ["serde", "v4"] }
