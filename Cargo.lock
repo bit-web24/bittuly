@@ -2707,10 +2707,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "base62",
- "bcrypt",
  "chrono",
- "dotenvy",
- "jsonwebtoken",
  "redis",
  "serde",
  "serde_json",

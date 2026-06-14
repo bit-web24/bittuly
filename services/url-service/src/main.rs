@@ -1,5 +1,6 @@
 mod consumer;
 mod handlers;
+mod health;
 mod models;
 mod repository;
 mod routes;

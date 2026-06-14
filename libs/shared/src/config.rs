@@ -27,7 +27,7 @@ impl AuthConfig {
                 .unwrap_or_else(|_| "3001".to_string())
                 .parse()
                 .expect("AUTH_PORT must be a number"),
-            server_addr: env::var("AUTH_ADDR").unwrap_or_else(|_| "0.0.0.0".to_owned()),
+            server_addr: env::var("AUTH_HOST").unwrap_or_else(|_| "0.0.0.0".to_owned()),
             mode: env::var("MODE").unwrap_or_else(|_| "production".to_owned()),
             cors_origin: env::var("CORS_ORIGIN")
                 .unwrap_or_else(|_| "http://localhost:5173".to_owned()),
@@ -47,7 +47,7 @@ impl UrlConfig {
                 .unwrap_or_else(|_| "3002".to_string())
                 .parse()
                 .expect("URL_PORT must be a number"),
-            server_addr: env::var("URL_ADDR").unwrap_or_else(|_| "0.0.0.0".to_owned()),
+            server_addr: env::var("URL_HOST").unwrap_or_else(|_| "0.0.0.0".to_owned()),
             mode: env::var("MODE").unwrap_or_else(|_| "production".to_owned()),
             cors_origin: env::var("CORS_ORIGIN")
                 .unwrap_or_else(|_| "http://localhost:5173".to_owned()),

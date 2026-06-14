@@ -5,16 +5,21 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
 use sqlx::PgPool;
+use tokio::time::Instant;
 use uuid::Uuid;
 use validator::Validate;
 
 pub struct AuthState {
     pub db: PgPool,
+    pub started_at: Instant,
 }
 
 impl AuthState {
     pub fn new(db: PgPool) -> Self {
-        Self { db }
+        Self {
+            db,
+            started_at: Instant::now(),
+        }
     }
 }
 

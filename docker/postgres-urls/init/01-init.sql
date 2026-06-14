@@ -12,6 +12,6 @@ CREATE TABLE IF NOT EXISTS urls (
   UNIQUE(original_url, user_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_urls_user_id ON urls(user_id);
+CREATE INDEX IF NOT EXISTS idx_urls_user_id ON urls(user_id, url_id DESC);
 CREATE INDEX IF NOT EXISTS idx_urls_short_code ON urls(short_code);
 CREATE INDEX IF NOT EXISTS idx_urls_original_url_trgm ON urls USING GIN (original_url gin_trgm_ops);

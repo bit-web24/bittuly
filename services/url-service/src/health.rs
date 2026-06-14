@@ -1,15 +1,9 @@
-use std::sync::Arc;
-
-use axum::{
-    Json,
-    extract::{Extension, State},
-    http::StatusCode,
-    response::IntoResponse,
-};
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 
-use crate::{postgres::DbPool, state::AppState};
+use crate::models::UrlStateRef;
 
+#[allow(unused)]
 #[derive(Serialize)]
 pub struct HealthResponse {
     /// "healthy" if all checks pass, "degraded" if any fail.
@@ -26,14 +20,11 @@ pub struct HealthResponse {
 ///
 /// Public endpoint — no authentication required.
 /// Returns 200 when all dependencies are reachable, 503 otherwise.
-pub async fn health(
-    State(db): State<DbPool>,
-    Extension(state): Extension<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn health(State(state): State<UrlStateRef>) -> impl IntoResponse {
     let uptime_secs = state.started_at.elapsed().as_secs();
 
     // ── Postgres: send a trivial query ───────────────────────────────────────
-    let postgres = match sqlx::query("SELECT 1").execute(&db).await {
+    let postgres = match sqlx::query("SELECT 1").execute(&state.db).await {
         Ok(_) => Ok("ok".to_owned()),
         Err(e) => {
             tracing::warn!("health check: postgres failed: {e}");

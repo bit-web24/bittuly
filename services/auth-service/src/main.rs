@@ -1,6 +1,7 @@
 mod debug_handler;
 mod email;
 mod handlers;
+mod health;
 mod models;
 mod otp_store;
 mod repository;
