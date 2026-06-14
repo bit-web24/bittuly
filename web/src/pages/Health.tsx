@@ -249,7 +249,7 @@ export function Health() {
               <StatCard
                 icon={Server}
                 label="API"
-                value="localhost:3000"
+                value={import.meta.env.VITE_URLS_API_URL || "http://localhost:8000"}
               />
             </div>
           </div>
