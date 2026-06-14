@@ -5,10 +5,13 @@ use axum::{
     routing::{get, post},
 };
 
-use crate::handlers::{delete_url_handler, get_all_urls, get_original_url, shorten_url};
-use shared::{jwt::jwt_auth, postgres::DbPool};
+use crate::{
+    handlers::{delete_url_handler, get_all_urls, get_original_url, shorten_url},
+    models::UrlStateRef,
+};
+use shared::jwt::jwt_auth;
 
-pub fn url_routes() -> Router<DbPool> {
+pub fn url_routes() -> Router<UrlStateRef> {
     // POST / and GET / both require auth
     let protected_root = Router::new()
         .route("/", post(shorten_url).get(get_all_urls))

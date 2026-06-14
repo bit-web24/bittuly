@@ -1,4 +1,4 @@
-use crate::services as url_service;
+use crate::{models::UrlStateRef, services as url_service};
 use axum::{
     extract::{Extension, Json, Path, Query, State},
     http::StatusCode,
@@ -6,8 +6,7 @@ use axum::{
 };
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
-use shared::{jwt::Claims, postgres::DbPool, state::AppState};
-use std::sync::Arc;
+use shared::jwt::Claims;
 use validator::Validate;
 
 const DEFAULT_PAGE_LIMIT: i64 = 20;
@@ -29,7 +28,7 @@ pub struct UrlsPageResponse {
 }
 
 pub async fn get_all_urls(
-    State(db): State<DbPool>,
+    State(state): State<UrlStateRef>,
     Extension(claims): Extension<Claims>,
     Query(params): Query<PaginationParams>,
 ) -> impl IntoResponse {
@@ -51,7 +50,7 @@ pub async fn get_all_urls(
     let limit = params.limit.unwrap_or(DEFAULT_PAGE_LIMIT);
     let search = params.search.filter(|s| !s.trim().is_empty());
 
-    match url_service::get_urls_page(&db, claims.sub, cursor, limit, search).await {
+    match url_service::get_urls_page(&state.db, claims.sub, cursor, limit, search).await {
         Ok(page) => (
             StatusCode::OK,
             Json(UrlsPageResponse {
@@ -74,14 +73,14 @@ pub struct ShortenUrlRequest {
 }
 
 pub async fn shorten_url(
-    State(db): State<DbPool>,
+    State(state): State<UrlStateRef>,
     Extension(claims): Extension<Claims>,
     Json(body): Json<ShortenUrlRequest>,
 ) -> impl IntoResponse {
     if let Err(errors) = body.validate() {
         return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
     }
-    match url_service::shorten_url(&db, &body.original_url, claims.sub).await {
+    match url_service::shorten_url(&state.db, &body.original_url, claims.sub).await {
         Ok(Some(url)) => (StatusCode::CREATED, Json(url)).into_response(),
         Ok(None) => (
             StatusCode::CONFLICT,
@@ -96,8 +95,7 @@ pub async fn shorten_url(
 }
 
 pub async fn get_original_url(
-    State(db): State<DbPool>,
-    Extension(state): Extension<Arc<AppState>>,
+    State(state): State<UrlStateRef>,
     Path(short_code): Path<String>,
 ) -> impl IntoResponse {
     let mut redis = state.redis.clone();
@@ -122,7 +120,7 @@ pub async fn get_original_url(
 
     // ── 2. Cache miss — query DB ───────────────────────────────────────────
     tracing::info!(short_code, "cache miss");
-    match url_service::get_original_url(&db, &short_code).await {
+    match url_service::get_original_url(&state.db, &short_code).await {
         Ok(Some(original_url)) => {
             // Populate cache with 24 h TTL, non-fatal if Redis is down
             if let Err(e) = redis
@@ -146,12 +144,11 @@ pub async fn get_original_url(
 }
 
 pub async fn delete_url_handler(
-    State(db): State<DbPool>,
-    Extension(state): Extension<Arc<AppState>>,
+    State(state): State<UrlStateRef>,
     Extension(claims): Extension<Claims>,
     Path(url_id): Path<i64>,
 ) -> impl IntoResponse {
-    match url_service::delete_url(&db, url_id, claims.sub).await {
+    match url_service::delete_url(&state.db, url_id, claims.sub).await {
         Ok(Some(short_code)) => {
             // Evict from Redis cache — non-fatal if Redis is unavailable
             let mut redis = state.redis.clone();

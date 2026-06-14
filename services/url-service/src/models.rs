@@ -1,7 +1,34 @@
+use std::sync::Arc;
+
 use chrono::DateTime;
 use chrono::Utc;
 use serde::Serialize;
+use shared::redis::RedisConn;
+use sqlx::PgPool;
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::time::Instant;
 use uuid::Uuid;
+
+pub type ClickSender = UnboundedSender<String>;
+
+pub struct UrlState {
+    pub db: PgPool,
+    pub tx: ClickSender,
+    pub redis: RedisConn,
+    pub started_at: Instant,
+}
+
+impl UrlState {
+    pub fn new(tx: ClickSender, redis: RedisConn, db: PgPool) -> Self {
+        Self {
+            db,
+            tx,
+            redis,
+            started_at: Instant::now(),
+        }
+    }
+}
+pub type UrlStateRef = Arc<UrlState>;
 
 #[derive(sqlx::FromRow, Serialize)]
 pub struct Url {

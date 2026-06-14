@@ -1,9 +1,51 @@
+mod consumer;
 mod handlers;
 mod models;
 mod repository;
 mod routes;
 mod services;
 
-pub struct UrlStruct;
+use shared::config;
+use shared::postgres;
+use shared::redis;
+use std::sync::Arc;
 
-fn main() {}
+use tokio::sync::mpsc;
+
+#[tokio::main]
+async fn main() {
+    let settings = config::UrlConfig::from_env().expect("Failed to load setting from environment");
+    let db = postgres::init_pg_pool(&settings.database_url)
+        .await
+        .expect("Failed to connect to Database");
+    let redis = redis::init_redis(&settings.redis_url)
+        .await
+        .expect("Failed to connect to Redis");
+
+    // Consumer task — two flush triggers:
+    //   1. Size  : every 17 accumulated click events
+    //   2. Timer : every 30 seconds (so low-traffic links are never stuck)
+    let consumer_db = db.clone();
+    let (tx, rx) = mpsc::unbounded_channel::<String>();
+    let consumer_handler = consumer::spawn_consumer(rx, consumer_db);
+    let url_state = Arc::new(models::UrlState::new(tx.clone(), redis, db));
+    let app = routes::url_routes().with_state(url_state);
+
+    let listener =
+        tokio::net::TcpListener::bind(format!("{}:{}", settings.server_addr, settings.server_port))
+            .await
+            .expect("failed to bind listener");
+
+    println!(
+        "listening on {} [mode={} cors={}]",
+        settings.server_addr, settings.mode, settings.cors_origin
+    );
+
+    if let Err(err) = axum::serve(listener, app).await {
+        eprintln!("server error: {err}");
+    }
+
+    // Signal consumer to stop and wait for it to drain
+    drop(tx);
+    consumer_handler.await.unwrap();
+}

@@ -14,13 +14,15 @@ use shared::postgres;
 
 #[tokio::main]
 async fn main() {
-    let settings = config::Settings::from_env().expect("Failed to load setting from environment");
+    let settings = config::AuthConfig::from_env().expect("Failed to load setting from environment");
     let db = postgres::init_pg_pool(&settings.database_url)
         .await
         .expect("Failed to connect to Database");
     let auth_state = Arc::new(models::AuthState { db });
     let app = routes::user_routes().with_state(auth_state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", settings.server_port))
+        .await
+        .unwrap();
     axum::serve(listener, app).await.unwrap();
 }
