@@ -1,4 +1,4 @@
-import { apiRequest } from "./client"
+import { apiRequest, URLS_BASE_URL } from "./client"
 
 export interface ShortenedUrl {
   id: number
@@ -14,7 +14,7 @@ export interface UrlsPage {
 }
 
 export async function createUrl(original_url: string): Promise<ShortenedUrl> {
-  return apiRequest("/", {
+  return apiRequest(URLS_BASE_URL, "/api/urls", {
     method: "POST",
     body: JSON.stringify({ original_url }),
   })
@@ -29,16 +29,16 @@ export async function getUrlsPage(
   if (cursor) params.set("cursor", cursor)
   params.set("limit", String(limit))
   if (search && search.trim()) params.set("search", search.trim())
-  return apiRequest(`/?${params.toString()}`)
+  return apiRequest(URLS_BASE_URL, `/api/urls?${params.toString()}`)
 }
 
 /** Convenience: fetch all URLs for non-paginated views (Insights). */
 export async function getUrls(): Promise<ShortenedUrl[]> {
   const params = new URLSearchParams({ limit: "100" })
-  const page = await apiRequest<UrlsPage>(`/?${params.toString()}`)
+  const page = await apiRequest<UrlsPage>(URLS_BASE_URL, `/api/urls?${params.toString()}`)
   return page.urls
 }
 
 export async function deleteUrl(id: number): Promise<null> {
-  return apiRequest(`/${id}`, { method: "DELETE" })
+  return apiRequest(URLS_BASE_URL, `/api/urls/${id}`, { method: "DELETE" })
 }

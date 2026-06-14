@@ -1,4 +1,5 @@
-const BASE_URL = "http://localhost:3000"
+export const AUTH_BASE_URL = import.meta.env.VITE_AUTH_API_URL || "http://localhost:3001"
+export const URLS_BASE_URL = import.meta.env.VITE_URLS_API_URL || "http://localhost:3002"
 
 export interface ApiError {
   status: number
@@ -6,10 +7,11 @@ export interface ApiError {
 }
 
 export async function apiRequest<T = unknown>(
+  baseUrl: string,
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${baseUrl}${path}`, {
     ...options,
     credentials: "include",
     headers: {
