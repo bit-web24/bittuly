@@ -10,26 +10,6 @@ use shared::jwt::{Claims, clear_token_cookies, set_token_cookies};
 use uuid::Uuid;
 use validator::Validate;
 
-pub async fn create_user(
-    State(state): State<AuthStateRef>,
-    Json(payload): Json<CreateUserPayload>,
-) -> impl IntoResponse {
-    if let Err(errors) = payload.validate() {
-        return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
-    }
-    match user_service::create_user(&state.db, payload).await {
-        Ok(auth) => {
-            let mut response = (StatusCode::CREATED, Json(auth.user)).into_response();
-            if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {
-                tracing::error!("set_token_cookies: {:?}", e);
-                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            }
-            response
-        }
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())).into_response(),
-    }
-}
-
 pub async fn login(
     State(state): State<AuthStateRef>,
     Json(payload): Json<LoginPayload>,

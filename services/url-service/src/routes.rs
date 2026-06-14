@@ -1,7 +1,5 @@
 use axum::{
-    Router,
-    handler::Handler,
-    middleware,
+    Router, middleware,
     routing::{get, post},
 };
 
