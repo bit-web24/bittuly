@@ -12,6 +12,12 @@ pub struct AuthState {
     pub db: PgPool,
 }
 
+impl AuthState {
+    pub fn new(db: PgPool) -> Self {
+        Self { db }
+    }
+}
+
 pub type AuthStateRef = Arc<AuthState>;
 
 #[derive(sqlx::FromRow, Serialize)]

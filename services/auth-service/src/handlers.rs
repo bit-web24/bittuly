@@ -1,7 +1,7 @@
 use crate::models::{
     AuthStateRef, CreateUserPayload, LoginPayload, UpdateUserPayload, VerifyOtpPayload,
 };
-use crate::service as user_service;
+use crate::services as user_service;
 use axum::extract::{Extension, Json, Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;

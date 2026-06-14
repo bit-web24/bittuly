@@ -36,6 +36,7 @@ pub fn store_otp(email: &str, otp: &str) {
 }
 
 /// Return all stored OTP entries, sorted by most recent first.
+#[allow(unused)]
 pub fn get_all() -> Vec<OtpEntry> {
     let entries = store()
         .read()

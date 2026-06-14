@@ -7,7 +7,7 @@ use axum::routing::{get, post};
 use axum::{Router, middleware};
 use shared::jwt::jwt_auth;
 
-pub fn user_routes() -> Router<AuthStateRef> {
+pub fn auth_routes() -> Router<AuthStateRef> {
     let protected = Router::new()
         .route(
             "/{user_id}",
