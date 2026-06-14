@@ -1,4 +1,5 @@
-use crate::{db::postgres::DbPool, models::Url, repository::url_repository};
+use crate::{models::Url, repository as url_repository};
+use shared::postgres::DbPool;
 use uuid::Uuid;
 
 pub async fn shorten_url(

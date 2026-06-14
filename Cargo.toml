@@ -1,24 +1,28 @@
-[package]
-name = "bittuly"
-version = "0.1.0"
-edition = "2024"
+# [package]
+# name = "bittuly"
+# version = "0.1.0"
+# edition = "2024"
 
-[dependencies]
-lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "smtp-transport", "builder"] }
-rand = "0.9"
-axum = "0.8.9"
-base62 = "2.2.4"
-bcrypt = "0.15"
-chrono = { version = "0.4.44", features = ["serde"] }
-dotenvy = "0.15.7"
-jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1"
-sqlx = { version = "0.9.0", features = ["chrono", "postgres", "runtime-tokio", "uuid"] }
-tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
-tower-http = { version = "0.6.11", features = ["cors", "trace"] }
-tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-uuid = { version = "1.23.2", features = ["serde", "v4"] }
-validator = { version = "0.20", features = ["derive"] }
-redis = { version = "1.2.2", features = ["tokio-comp", "connection-manager"] }
+[workspace]
+members = ["libs/shared", "services/auth-service", "services/url-service"]
+resolver = "3"
+
+# [dependencies]
+# lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "smtp-transport", "builder"] }
+# rand = "0.9"
+# axum = "0.8.9"
+# base62 = "2.2.4"
+# bcrypt = "0.15"
+# chrono = { version = "0.4.44", features = ["serde"] }
+# dotenvy = "0.15.7"
+# jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
+# serde = { version = "1.0.228", features = ["derive"] }
+# serde_json = "1"
+# sqlx = { version = "0.9.0", features = ["chrono", "postgres", "runtime-tokio", "uuid"] }
+# tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
+# tower-http = { version = "0.6.11", features = ["cors", "trace"] }
+# tracing = "0.1.44"
+# tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+# uuid = { version = "1.23.2", features = ["serde", "v4"] }
+# validator = { version = "0.20", features = ["derive"] }
+# redis = { version = "1.2.2", features = ["tokio-comp", "connection-manager"] }

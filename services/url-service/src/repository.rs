@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use crate::{db::postgres::DbPool, models::Url};
+use crate::models::Url;
+use shared::postgres::DbPool;
 use uuid::Uuid;
 
 /// Creates a shortened URL.
@@ -109,7 +110,7 @@ pub async fn get_urls_page(
     )
     .bind(user_id)
     .bind(cursor)
-    .bind(limit + 1)          // fetch one extra to detect next page
+    .bind(limit + 1) // fetch one extra to detect next page
     .bind(search_pattern)
     .fetch_all(db)
     .await?;
@@ -137,13 +138,12 @@ pub async fn delete_url(
     url_id: i64,
     user_id: Uuid,
 ) -> Result<Option<String>, sqlx::Error> {
-    let row: Option<(String,)> = sqlx::query_as(
-        "DELETE FROM urls WHERE url_id = $1 AND user_id = $2 RETURNING short_code",
-    )
-    .bind(url_id)
-    .bind(user_id)
-    .fetch_optional(db)
-    .await?;
+    let row: Option<(String,)> =
+        sqlx::query_as("DELETE FROM urls WHERE url_id = $1 AND user_id = $2 RETURNING short_code")
+            .bind(url_id)
+            .bind(user_id)
+            .fetch_optional(db)
+            .await?;
 
     Ok(row.map(|(short_code,)| short_code))
 }
@@ -174,4 +174,3 @@ pub async fn increment_click_counts(
 
     Ok(())
 }
-

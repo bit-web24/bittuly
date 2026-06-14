@@ -1,6 +1,4 @@
-use crate::{
-    app::state::AppState, db::postgres::DbPool, middlewares::jwt::Claims, services::url_service,
-};
+use crate::services as url_service;
 use axum::{
     extract::{Extension, Json, Path, Query, State},
     http::StatusCode,
@@ -8,6 +6,7 @@ use axum::{
 };
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use shared::{jwt::Claims, postgres::DbPool, state::AppState};
 use std::sync::Arc;
 use validator::Validate;
 
@@ -44,7 +43,7 @@ pub async fn get_all_urls(
                     StatusCode::BAD_REQUEST,
                     Json(serde_json::json!({ "error": "invalid cursor" })),
                 )
-                    .into_response()
+                    .into_response();
             }
         },
     };
@@ -68,14 +67,11 @@ pub async fn get_all_urls(
     }
 }
 
-
 #[derive(Deserialize, Validate)]
 pub struct ShortenUrlRequest {
     #[validate(url)]
     pub original_url: String,
 }
-
-
 
 pub async fn shorten_url(
     State(db): State<DbPool>,
