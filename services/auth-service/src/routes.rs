@@ -19,7 +19,7 @@ pub fn auth_routes() -> Router<AuthStateRef> {
     Router::new()
         .route("/signup", post(request_signup_handler)) // Step 1: send OTP
         .route("/verify-otp", post(verify_otp_handler)) // Step 2: verify OTP → create user + JWT
-        .route("/direct-signup", post(create_user)) // Legacy: direct signup (no OTP)
+        // .route("/direct-signup", post(create_user)) // Legacy: direct signup (no OTP)
         .route("/login", post(login))
         .merge(protected)
 }

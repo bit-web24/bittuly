@@ -20,7 +20,9 @@ async fn main() {
         .expect("Failed to connect to Database");
 
     let auth_state = Arc::new(models::AuthState::new(db));
-    let app = routes::auth_routes().with_state(auth_state);
+    let app = axum::Router::new()
+        .nest("/api/auth", routes::auth_routes())
+        .with_state(auth_state);
 
     let listener =
         tokio::net::TcpListener::bind(format!("{}:{}", settings.server_addr, settings.server_port))
