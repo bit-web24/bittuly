@@ -11,6 +11,7 @@ use validator::Validate;
 
 pub struct AuthState {
     pub db: PgPool,
+    #[allow(dead_code)]
     pub started_at: Instant,
 }
 

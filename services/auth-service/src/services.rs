@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 type ServiceResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+#[allow(dead_code)]
 pub async fn create_user(
     db: &DbPool,
     mut payload: CreateUserPayload,

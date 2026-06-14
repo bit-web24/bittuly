@@ -14,9 +14,9 @@ use uuid::Uuid;
 const ACCESS_TOKEN_TYPE: &str = "access";
 const REFRESH_TOKEN_TYPE: &str = "refresh";
 const PENDING_TOKEN_TYPE: &str = "pending";
-const ACCESS_TOKEN_TTL_SECONDS: u64 = 60 * 15;            // 15 minutes
+const ACCESS_TOKEN_TTL_SECONDS: u64 = 60 * 15; // 15 minutes
 const REFRESH_TOKEN_TTL_SECONDS: u64 = 60 * 60 * 24 * 30; // 30 days
-const PENDING_TOKEN_TTL_SECONDS: u64 = 60 * 10;           // 10 minutes
+const PENDING_TOKEN_TTL_SECONDS: u64 = 60 * 10; // 10 minutes
 const COOKIE_ACCESS: &str = "access_token";
 const COOKIE_REFRESH: &str = "refresh_token";
 
@@ -34,15 +34,27 @@ fn create_token(
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let secret = std::env::var("JWT_SECRET")?;
     let exp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() + ttl_seconds;
-    let claims = Claims { sub: user_id, exp: exp as usize, token_type: token_type.to_string() };
-    Ok(encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_bytes()))?)
+    let claims = Claims {
+        sub: user_id,
+        exp: exp as usize,
+        token_type: token_type.to_string(),
+    };
+    Ok(encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )?)
 }
 
-pub fn create_access_token(user_id: Uuid) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+pub fn create_access_token(
+    user_id: Uuid,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     create_token(user_id, ACCESS_TOKEN_TYPE, ACCESS_TOKEN_TTL_SECONDS)
 }
 
-pub fn create_refresh_token(user_id: Uuid) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+pub fn create_refresh_token(
+    user_id: Uuid,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     create_token(user_id, REFRESH_TOKEN_TYPE, REFRESH_TOKEN_TTL_SECONDS)
 }
 
@@ -79,7 +91,11 @@ pub fn create_pending_token(
         otp_hash: otp_hash.to_string(),
         exp: exp as usize,
     };
-    Ok(encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_bytes()))?)
+    Ok(encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )?)
 }
 
 /// Decode and validate a pending signup JWT.
@@ -120,11 +136,19 @@ pub fn set_token_cookies(
     #[cfg(not(debug_assertions))]
     let flags = "HttpOnly; Secure; SameSite=Strict";
 
-    let access = format!("{COOKIE_ACCESS}={access_token}; {flags}; Max-Age={ACCESS_TOKEN_TTL_SECONDS}; Path=/");
-    let refresh = format!("{COOKIE_REFRESH}={refresh_token}; {flags}; Max-Age={REFRESH_TOKEN_TTL_SECONDS}; Path=/");
+    let access = format!(
+        "{COOKIE_ACCESS}={access_token}; {flags}; Max-Age={ACCESS_TOKEN_TTL_SECONDS}; Path=/"
+    );
+    let refresh = format!(
+        "{COOKIE_REFRESH}={refresh_token}; {flags}; Max-Age={REFRESH_TOKEN_TTL_SECONDS}; Path=/"
+    );
 
-    response.headers_mut().append(header::SET_COOKIE, HeaderValue::from_str(&access)?);
-    response.headers_mut().append(header::SET_COOKIE, HeaderValue::from_str(&refresh)?);
+    response
+        .headers_mut()
+        .append(header::SET_COOKIE, HeaderValue::from_str(&access)?);
+    response
+        .headers_mut()
+        .append(header::SET_COOKIE, HeaderValue::from_str(&refresh)?);
     Ok(())
 }
 
@@ -175,8 +199,7 @@ async fn refresh_access_token(
     cookie_str: &str,
     secret: &str,
 ) -> Result<Response, StatusCode> {
-    let refresh_token =
-        parse_cookie(cookie_str, COOKIE_REFRESH).ok_or(StatusCode::UNAUTHORIZED)?;
+    let refresh_token = parse_cookie(cookie_str, COOKIE_REFRESH).ok_or(StatusCode::UNAUTHORIZED)?;
 
     let data = decode::<Claims>(
         &refresh_token,
@@ -191,7 +214,8 @@ async fn refresh_access_token(
 
     let user_id = data.claims.sub;
     let new_access = create_access_token(user_id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let new_refresh = create_refresh_token(user_id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let new_refresh =
+        create_refresh_token(user_id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     req.extensions_mut().insert(Claims {
         sub: user_id,

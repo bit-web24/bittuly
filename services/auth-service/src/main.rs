@@ -11,11 +11,12 @@ mod services;
 use shared::config;
 use shared::postgres;
 use std::sync::Arc;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
+#[allow(dead_code)]
 async fn main() {
     tracing_subscriber::registry()
         .with(

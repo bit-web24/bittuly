@@ -135,7 +135,9 @@ pub async fn get_original_url(
             }
             Redirect::temporary(&original_url).into_response()
         }
-        Ok(None) => Redirect::temporary(&format!("{}/unavailable", state.cors_origin)).into_response(),
+        Ok(None) => {
+            Redirect::temporary(&format!("{}/unavailable", state.cors_origin)).into_response()
+        }
         Err(err) => {
             tracing::error!("{:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR.into_response()

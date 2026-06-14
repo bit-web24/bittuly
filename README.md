@@ -81,3 +81,23 @@ docker compose up -d
 cargo build --release
 ```
 This builds optimized binaries for both services in the `target/release` folder.
+
+---
+
+## 🛡️ Continuous Integration (CI) & Git Hooks
+
+This project uses GitHub Actions to automatically format, lint, and test both the Rust backend and React frontend on every push.
+
+If you want to run these exact same checks locally before pushing, you can run the provided check script:
+```bash
+./scripts/check.sh
+```
+
+**Recommended: Set up a Git Pre-Push Hook**
+To ensure you never push broken code to GitHub, you can force Git to automatically run this script every time you type `git push`. If the checks fail, the push is aborted.
+
+To install the hook, simply run:
+```bash
+cp scripts/check.sh .git/hooks/pre-push
+chmod +x .git/hooks/pre-push
+```

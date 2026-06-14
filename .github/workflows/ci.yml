@@ -1,0 +1,64 @@
+name: Bittuly CI
+
+on:
+  push:
+    branches: [ "main", "dist_sys" ]
+  pull_request:
+    branches: [ "main", "dist_sys" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  backend-checks:
+    name: Backend (Rust)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy Lints
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Run Tests
+        run: cargo test --workspace
+
+  frontend-checks:
+    name: Frontend (React)
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: ./web
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: 'npm'
+          cache-dependency-path: './web/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Verify Build
+        run: npm run build

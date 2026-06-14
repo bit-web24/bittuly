@@ -10,7 +10,7 @@ use shared::config;
 use shared::postgres;
 use shared::redis;
 use std::sync::Arc;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -40,7 +40,12 @@ async fn main() {
     let consumer_db = db.clone();
     let (tx, rx) = mpsc::unbounded_channel::<String>();
     let consumer_handler = consumer::spawn_consumer(rx, consumer_db);
-    let url_state = Arc::new(models::UrlState::new(tx.clone(), redis, db, settings.cors_origin.clone()));
+    let url_state = Arc::new(models::UrlState::new(
+        tx.clone(),
+        redis,
+        db,
+        settings.cors_origin.clone(),
+    ));
 
     let cors = CorsLayer::new()
         .allow_origin(

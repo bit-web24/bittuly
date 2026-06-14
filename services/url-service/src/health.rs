@@ -20,6 +20,7 @@ pub struct HealthResponse {
 ///
 /// Public endpoint — no authentication required.
 /// Returns 200 when all dependencies are reachable, 503 otherwise.
+#[allow(dead_code)]
 pub async fn health(State(state): State<UrlStateRef>) -> impl IntoResponse {
     let uptime_secs = state.started_at.elapsed().as_secs();
 

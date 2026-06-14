@@ -15,6 +15,7 @@ pub struct UrlState {
     pub db: PgPool,
     pub tx: ClickSender,
     pub redis: RedisConn,
+    #[allow(dead_code)]
     pub started_at: Instant,
     pub cors_origin: String,
 }

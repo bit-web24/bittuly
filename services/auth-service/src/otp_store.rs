@@ -44,6 +44,6 @@ pub fn get_all() -> Vec<OtpEntry> {
         .unwrap_or_default();
 
     let mut sorted = entries;
-    sorted.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.created_at));
     sorted
 }
