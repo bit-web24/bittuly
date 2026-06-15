@@ -447,8 +447,8 @@ Each service exposes `GET /metrics` using the `metrics` + `metrics-exporter-prom
 |---|---|
 | TLS | cert-manager + Let's Encrypt, HTTPS-only, HTTP → HTTPS redirect |
 | JWT validation | NGINX `auth_request` → `auth-service /api/auth/validate` |
-| Rate limiting — redirects | 100 req/s per IP (`limit-rps: "100"`) |
-| Rate limiting — shorten | 10 req/min per user (`limit-rpm: "10"` + X-User-Id key) |
+| Rate limiting — redirects | 20 req/s per IP |
+| Rate limiting — shorten | 10 req/min per user (X-User-Id key) |
 | URL safety | Google Safe Browsing API v4, checked before every INSERT |
 | Secrets | Kubernetes Secrets + Sealed Secrets operator (safe to git-commit) |
 | Network policy | Deny-all default, allow-list per service |
