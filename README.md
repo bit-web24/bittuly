@@ -13,6 +13,26 @@ Bittuly is a production-grade, distributed URL shortener built with Rust (Axum) 
 
 ---
 
+## 📨 Event Bus Workflows (RabbitMQ)
+
+To ensure the microservices remain decoupled, highly performant, and reliable, we use RabbitMQ as the central messaging backbone.
+
+### 1. User Deletion Workflow (`user_deleted_queue`)
+When a user deletes their account:
+1. **Publisher (`auth-service`)**: Deletes the user from `pg-auth` and publishes a `UserDeletedEvent(user_id)` to RabbitMQ. It immediately returns `204 No Content` to the user.
+2. **Consumer (`consumer-service`)**: Asynchronously listens for the event.
+3. **Execution**: The consumer connects to `pg-urls` to delete all links belonging to the `user_id` using a `RETURNING short_code` query. It then loops through those codes and evicts them from the **Redis Cache**.
+4. **Resilience**: If the `pg-urls` database is temporarily down, the consumer utilizes **Native Exponential Backoff**. It publishes the message to tiered delay queues (3s, 9s, 27s) using RabbitMQ's Time-To-Live (TTL) feature. If it fails 4 times, it is routed to a permanent Dead Letter Queue (`user_deleted_dlq`).
+
+### 2. Analytics Tracking Workflow (`click_events_queue`)
+When a user clicks a shortened URL:
+1. **Publisher (`url-service`)**: Responds with a fast `302 Redirect` (from Redis) and immediately fires a `short_code` payload into the RabbitMQ `click_events_queue` in the background. The user never waits for the database.
+2. **Consumer (`consumer-service`)**: Pulls the click events off the queue and holds them in an in-memory `HashMap`.
+3. **Execution (Batching)**: To prevent hammering the database, the consumer flushes the clicks to Postgres in **bulk** either every 30 seconds (Timer-based) or every 17 clicks (Size-based). It executes a single atomic `UPDATE` using `unnest` arrays.
+4. **Resilience**: If the database is offline during a flush, the consumer sleeps its thread (Dynamic Backoff: 3s, 9s, 27s) and `NACK`s the batch, cleanly applying backpressure to the RabbitMQ queue until the DB recovers.
+
+---
+
 ## 🚀 Getting Started
 
 ### 1. Start the Infrastructure (Databases & Cache)
@@ -101,10 +121,19 @@ If you want to run these exact same checks locally before pushing, you can run t
 ./scripts/check.sh
 ```
 
-**Recommended: Set up a Git Pre-Push Hook**
-To ensure you never push broken code to GitHub, you can force Git to automatically run this script every time you type `git push`. If the checks fail, the push is aborted.
+**Recommended: Set up Git Hooks**
 
-To install the hook, simply run:
+To ensure your code is always formatted and passes checks before pushing, we recommend setting up two git hooks:
+
+**1. Pre-Commit Hook (Auto-formatting)**
+This hook automatically runs `cargo fmt` to format your Rust code right before creating a commit.
+```bash
+echo -e '#!/bin/sh\n\necho "==> Formatting Rust code (cargo fmt)..."\ncargo fmt --workspace\n\necho "==> Rust formatting complete."\n' > .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
+**2. Pre-Push Hook (CI Checks)**
+This hook runs the full check script before pushing code to GitHub. If tests or linting fail, the push is aborted.
 ```bash
 cp scripts/check.sh .git/hooks/pre-push
 chmod +x .git/hooks/pre-push

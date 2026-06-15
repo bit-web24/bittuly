@@ -504,44 +504,44 @@ Each service exposes `GET /metrics` using the `metrics` + `metrics-exporter-prom
 
 ---
 
-### Phase 0 — Workspace Restructure
+### ✅ Phase 0 — Workspace Restructure
 **Goal:** Convert monolith repo into Cargo workspace. No functional change.
 
-- [ ] Create workspace `Cargo.toml` with `[workspace]` members
-- [ ] Create `libs/shared/` crate — move JWT types, config, errors into it
-- [ ] Create `services/auth-service/` skeleton — copy auth handlers/models/repos
-- [ ] Create `services/url-service/` skeleton — copy url handlers/models/repos
-- [ ] Both services compile independently with `shared` as a dependency
-- [ ] `docker-compose.yml` builds both services, both start successfully
-- [ ] All existing functionality works end-to-end
+- [x] Create workspace `Cargo.toml` with `[workspace]` members
+- [x] Create `libs/shared/` crate — move JWT types, config, errors into it
+- [x] Create `services/auth-service/` skeleton — copy auth handlers/models/repos
+- [x] Create `services/url-service/` skeleton — copy url handlers/models/repos
+- [x] Both services compile independently with `shared` as a dependency
+- [x] `docker-compose.yml` builds both services, both start successfully
+- [x] All existing functionality works end-to-end
 
 ---
 
-### Phase 1 — Service Extraction & DB Split
+### ✅ Phase 1 — Service Extraction & DB Split
 **Goal:** Two fully independent services with separate databases.
 
-- [ ] `pg-auth`: users table only
-- [ ] `pg-urls`: urls table only, `user_id` is a plain UUID column (no FK)
-- [ ] `auth-service`: issues JWTs; validates via `/api/auth/validate`
-- [ ] `url-service`: reads `X-User-Id` header injected by gateway (no JWT parsing)
-- [ ] Docker Compose: add simple NGINX or Caddy as reverse proxy for local dev
-- [ ] Frontend routes unchanged — still talks to `:3000`
-- [ ] Full end-to-end test: signup → login → shorten → redirect → delete
+- [x] `pg-auth`: users table only
+- [x] `pg-urls`: urls table only, `user_id` is a plain UUID column (no FK)
+- [x] `auth-service`: issues JWTs; validates via `/api/auth/validate`
+- [x] `url-service`: reads `X-User-Id` header injected by gateway (no JWT parsing)
+- [x] Docker Compose: add simple NGINX or Caddy as reverse proxy for local dev
+- [x] Frontend routes unchanged — still talks to `:3000` (or proxy)
+- [x] Full end-to-end test: signup → login → shorten → redirect → delete
 
 ---
 
-### Phase 2 — RabbitMQ Event Bus
+### ✅ Phase 2 — RabbitMQ Event Bus
 **Goal:** Reliable cross-service event delivery with durability guarantees.
 
-- [ ] Add RabbitMQ to Docker Compose (management UI on :15672)
-- [ ] Add `lapin` + `deadpool-lapin` to both services via shared crate
-- [ ] `auth-service` publishes `user.deleted` on account deletion
-- [ ] `url-service` consumes `user.deleted`:
+- [x] Add RabbitMQ to Docker Compose (management UI on :15672)
+- [x] Add `lapin` + `deadpool-lapin` to both services via shared crate
+- [x] `auth-service` publishes `user.deleted` on account deletion
+- [x] Background consumer consumes `user.deleted`:
   - Deletes all URLs for that user_id
   - Evicts their short_codes from Redis
   - Manual ack after successful DB + Redis operations
-- [ ] Dead-letter queue for failed messages
-- [ ] Integration test: delete account → verify URLs gone, Redis keys evicted
+- [x] Dead-letter queue and Exponential Backoff (3s, 9s, 27s) for failed messages
+- [x] Integration test: delete account → verify URLs gone, Redis keys evicted
 
 ---
 
@@ -709,4 +709,4 @@ open http://localhost:16686    # Jaeger
 ---
 
 *Document created: 2026-06-13*
-*Current status: Phase 0 — Workspace Restructure — NOT STARTED*
+*Current status: Phase 3 — URL Expiration — IN PROGRESS*
