@@ -253,12 +253,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         );
 
                         let mut retry_count = 0;
-                        if let Some(headers) = delivery.properties.headers() {
-                            if let Some(lapin::types::AMQPValue::LongInt(count)) =
+                        if let Some(headers) = delivery.properties.headers()
+                            && let Some(lapin::types::AMQPValue::LongInt(count)) =
                                 headers.inner().get("x-retry-count")
-                            {
-                                retry_count = *count;
-                            }
+                        {
+                            retry_count = *count;
                         }
 
                         if retry_count >= 3 {
