@@ -8,6 +8,7 @@ import { Profile } from "@/pages/Profile"
 import { Settings } from "@/pages/Settings"
 import { Insights } from "@/pages/Insights"
 import { Health } from "@/pages/Health"
+import { Unavailable } from "@/pages/Unavailable"
 
 export function AppRouter() {
   return (
@@ -55,7 +56,9 @@ export function AppRouter() {
           </ProtectedRoute>
         }
       />
+      <Route path="/unavailable" element={<Unavailable />} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Unavailable />} />
     </Routes>
   )
 }

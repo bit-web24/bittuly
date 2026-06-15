@@ -1,5 +1,6 @@
 import * as React from "react"
 import { getUrls, type ShortenedUrl } from "@/api/urls"
+import { URLS_BASE_URL } from "@/api/client"
 import { AppLayout } from "@/components/AppLayout"
 import {
   PieChart,
@@ -319,7 +320,7 @@ export function Insights() {
                                 style={{ background: COLORS[i % COLORS.length] }}
                               />
                               <a
-                                href={`http://localhost:3000/${url.short_code}`}
+                                href={`${URLS_BASE_URL}/${url.short_code}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="font-mono font-medium text-notion-blue hover:underline"

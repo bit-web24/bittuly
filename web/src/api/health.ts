@@ -1,4 +1,4 @@
-const BASE_URL = "http://localhost:3000"
+const URLS_BASE_URL = import.meta.env.VITE_URLS_API_URL || "http://localhost:8000"
 
 export interface HealthData {
   status: "healthy" | "degraded"
@@ -9,12 +9,12 @@ export interface HealthData {
 }
 
 /**
- * Fetches /health — never throws.
+ * Fetches /api/urls/health — never throws.
  * Returns the response body whether the server returned 200 or 503.
  */
 export async function getHealth(): Promise<{ data: HealthData; ok: boolean }> {
   try {
-    const res = await fetch(`${BASE_URL}/health`)
+    const res = await fetch(`${URLS_BASE_URL}/api/urls/health`)
     const data: HealthData = await res.json()
     return { data, ok: res.ok }
   } catch {
