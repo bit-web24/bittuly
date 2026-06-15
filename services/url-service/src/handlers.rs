@@ -156,26 +156,26 @@ pub async fn get_original_url(
     match result {
         Some((original_url, expires_at)) => {
             // Re-verify expiration in case it expired while sitting in the 3-second L1 microcache
-            if let Some(exp) = expires_at {
-                if exp < chrono::Utc::now() {
-                    state.l1_cache.remove(&short_code).await;
-                    return StatusCode::GONE.into_response();
-                }
+            if let Some(exp) = expires_at
+                && exp < chrono::Utc::now()
+            {
+                state.l1_cache.remove(&short_code).await;
+                return StatusCode::GONE.into_response();
             }
 
             // Publish click event asynchronously via RabbitMQ
-            if let Ok(conn) = state.rabbitmq.get().await {
-                if let Ok(channel) = conn.create_channel().await {
-                    let _ = channel
-                        .basic_publish(
-                            "",
-                            "click_events_queue",
-                            shared::lapin::options::BasicPublishOptions::default(),
-                            short_code.as_bytes(),
-                            shared::lapin::BasicProperties::default(),
-                        )
-                        .await;
-                }
+            if let Ok(conn) = state.rabbitmq.get().await
+                && let Ok(channel) = conn.create_channel().await
+            {
+                let _ = channel
+                    .basic_publish(
+                        "",
+                        "click_events_queue",
+                        shared::lapin::options::BasicPublishOptions::default(),
+                        short_code.as_bytes(),
+                        shared::lapin::BasicProperties::default(),
+                    )
+                    .await;
             }
 
             Redirect::temporary(&original_url).into_response()

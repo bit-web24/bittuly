@@ -11,6 +11,8 @@ use sqlx::PgPool;
 use tokio::time::Instant;
 use uuid::Uuid;
 
+pub type CachedUrlResult = Option<(String, Option<DateTime<Utc>>)>;
+
 pub struct UrlState {
     pub rabbitmq: shared::deadpool_lapin::Pool,
     pub db: PgPool,
@@ -19,7 +21,7 @@ pub struct UrlState {
     pub started_at: Instant,
     #[allow(dead_code)]
     pub cors_origin: String,
-    pub l1_cache: Cache<String, Option<(String, Option<DateTime<Utc>>)>>,
+    pub l1_cache: Cache<String, CachedUrlResult>,
 }
 
 impl UrlState {
