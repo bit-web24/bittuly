@@ -20,6 +20,41 @@ pub async fn init_rabbitmq_pool(amqp_url: &str) -> Pool {
 
         let _ = channel
             .queue_declare(
+                "user_deleted_dlq",
+                options,
+                lapin::types::FieldTable::default(),
+            )
+            .await;
+
+        for delay in [3, 9, 27] {
+            let mut retry_args = lapin::types::FieldTable::default();
+            retry_args.insert(
+                "x-message-ttl".into(),
+                lapin::types::AMQPValue::LongInt(delay * 1000),
+            );
+            retry_args.insert(
+                "x-dead-letter-exchange".into(),
+                lapin::types::AMQPValue::LongString("".into()),
+            );
+            retry_args.insert(
+                "x-dead-letter-routing-key".into(),
+                lapin::types::AMQPValue::LongString("user_deleted_queue".into()),
+            );
+
+            let _ = channel
+                .queue_declare(
+                    &format!("user_deleted_retry_{}s", delay),
+                    lapin::options::QueueDeclareOptions {
+                        durable: true,
+                        ..Default::default()
+                    },
+                    retry_args,
+                )
+                .await;
+        }
+
+        let _ = channel
+            .queue_declare(
                 "user_deleted_queue",
                 options,
                 lapin::types::FieldTable::default(),

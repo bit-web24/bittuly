@@ -55,6 +55,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         ..Default::default()
     };
 
+    let _ = channel
+        .queue_declare("user_deleted_dlq", options, FieldTable::default())
+        .await?;
+
+    for delay in [3, 9, 27] {
+        let mut retry_args = FieldTable::default();
+        retry_args.insert(
+            "x-message-ttl".into(),
+            lapin::types::AMQPValue::LongInt(delay * 1000),
+        );
+        retry_args.insert(
+            "x-dead-letter-exchange".into(),
+            lapin::types::AMQPValue::LongString("".into()),
+        );
+        retry_args.insert(
+            "x-dead-letter-routing-key".into(),
+            lapin::types::AMQPValue::LongString("user_deleted_queue".into()),
+        );
+
+        let _ = channel
+            .queue_declare(
+                &format!("user_deleted_retry_{}s", delay),
+                QueueDeclareOptions {
+                    durable: true,
+                    ..Default::default()
+                },
+                retry_args,
+            )
+            .await?;
+    }
+
     channel
         .queue_declare("click_events_queue", options, FieldTable::default())
         .await?;
@@ -90,6 +121,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut batch: HashMap<String, u64> = HashMap::new();
         let mut total_clicks: u64 = 0;
         let mut last_delivery_tag: Option<u64> = None;
+        let mut consecutive_failures = 0;
         let mut flush_interval = interval(Duration::from_secs(30));
         flush_interval.tick().await;
 
@@ -108,6 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 match increment_click_counts(&click_db, &batch).await {
                                     Ok(_) => {
                                         let unique_urls: Vec<_> = batch.keys().cloned().collect();
+                                        consecutive_failures = 0;
                                         tracing::info!(
                                             "🚀 [CLICK BATCH] Flushed {} clicks across {} unique URLs (Trigger: Size). Codes: {:?}",
                                             total_clicks,
@@ -119,7 +152,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                         }
                                     }
                                     Err(e) => {
-                                        tracing::error!("Click batch flush failed (DB down?): {}", e);
+                                        let delay = 3_u64.pow(consecutive_failures.min(2) + 1);
+                                        consecutive_failures += 1;
+                                        tracing::error!("Click batch flush failed (DB down?). Backing off for {}s. Error: {}", delay, e);
+                                        tokio::time::sleep(Duration::from_secs(delay)).await;
                                         if let Some(tag) = last_delivery_tag.take() {
                                             let _ = click_channel.basic_nack(tag, lapin::options::BasicNackOptions { multiple: true, requeue: true }).await;
                                         }
@@ -135,6 +171,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         match increment_click_counts(&click_db, &batch).await {
                             Ok(_) => {
                                 let unique_urls: Vec<_> = batch.keys().cloned().collect();
+                                consecutive_failures = 0;
                                 tracing::info!(
                                     "⏱️  [CLICK BATCH] Flushed {} clicks across {} unique URLs (Trigger: Timer). Codes: {:?}",
                                     total_clicks,
@@ -146,7 +183,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 }
                             }
                             Err(e) => {
-                                tracing::error!("Click batch flush failed (DB down?): {}", e);
+                                let delay = 3_u64.pow(consecutive_failures.min(2) + 1);
+                                consecutive_failures += 1;
+                                tracing::error!("Click batch flush failed (DB down?). Backing off for {}s. Error: {}", delay, e);
+                                tokio::time::sleep(Duration::from_secs(delay)).await;
                                 if let Some(tag) = last_delivery_tag.take() {
                                     let _ = click_channel.basic_nack(tag, lapin::options::BasicNackOptions { multiple: true, requeue: true }).await;
                                 }
@@ -211,7 +251,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             event.user_id,
                             e
                         );
-                        // Do not ack, so it can be retried or dead-lettered
+
+                        let mut retry_count = 0;
+                        if let Some(headers) = delivery.properties.headers() {
+                            if let Some(lapin::types::AMQPValue::LongInt(count)) =
+                                headers.inner().get("x-retry-count")
+                            {
+                                retry_count = *count;
+                            }
+                        }
+
+                        if retry_count >= 3 {
+                            tracing::error!(
+                                "Message exceeded 3 retries. Moving to user_deleted_dlq."
+                            );
+                            let _ = user_channel
+                                .basic_publish(
+                                    "",
+                                    "user_deleted_dlq",
+                                    lapin::options::BasicPublishOptions::default(),
+                                    &delivery.data,
+                                    delivery.properties.clone(),
+                                )
+                                .await;
+                        } else {
+                            let delay_secs = 3_i32.pow(retry_count as u32 + 1);
+                            let target_queue = format!("user_deleted_retry_{}s", delay_secs);
+
+                            tracing::warn!(
+                                "Retrying message in {}s. Attempt: {}/3. Moving to {}.",
+                                delay_secs,
+                                retry_count + 1,
+                                target_queue
+                            );
+                            let mut props = delivery.properties.clone();
+                            let mut headers = props.headers().clone().unwrap_or_default();
+                            headers.insert(
+                                "x-retry-count".into(),
+                                lapin::types::AMQPValue::LongInt(retry_count + 1),
+                            );
+                            props = props.with_headers(headers);
+
+                            let _ = user_channel
+                                .basic_publish(
+                                    "",
+                                    &target_queue,
+                                    lapin::options::BasicPublishOptions::default(),
+                                    &delivery.data,
+                                    props,
+                                )
+                                .await;
+                        }
+
+                        let _ = delivery.ack(BasicAckOptions::default()).await;
                     }
                 }
             } else {
