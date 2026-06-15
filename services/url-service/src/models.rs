@@ -15,6 +15,7 @@ pub struct UrlState {
     pub redis: RedisConn,
     #[allow(dead_code)]
     pub started_at: Instant,
+    #[allow(dead_code)]
     pub cors_origin: String,
 }
 
