@@ -114,18 +114,18 @@ pub async fn get_original_url(
         tracing::info!(short_code, "cache hit");
 
         // Publish click to RabbitMQ
-        if let Ok(conn) = state.rabbitmq.get().await {
-            if let Ok(channel) = conn.create_channel().await {
-                let _ = channel
-                    .basic_publish(
-                        "",
-                        "click_events_queue",
-                        shared::lapin::options::BasicPublishOptions::default(),
-                        short_code.as_bytes(),
-                        shared::lapin::BasicProperties::default(),
-                    )
-                    .await;
-            }
+        if let Ok(conn) = state.rabbitmq.get().await
+            && let Ok(channel) = conn.create_channel().await
+        {
+            let _ = channel
+                .basic_publish(
+                    "",
+                    "click_events_queue",
+                    shared::lapin::options::BasicPublishOptions::default(),
+                    short_code.as_bytes(),
+                    shared::lapin::BasicProperties::default(),
+                )
+                .await;
         }
         return Redirect::temporary(&original_url).into_response();
     }
@@ -143,18 +143,18 @@ pub async fn get_original_url(
             }
 
             // Publish click to RabbitMQ
-            if let Ok(conn) = state.rabbitmq.get().await {
-                if let Ok(channel) = conn.create_channel().await {
-                    let _ = channel
-                        .basic_publish(
-                            "",
-                            "click_events_queue",
-                            shared::lapin::options::BasicPublishOptions::default(),
-                            short_code.as_bytes(),
-                            shared::lapin::BasicProperties::default(),
-                        )
-                        .await;
-                }
+            if let Ok(conn) = state.rabbitmq.get().await
+                && let Ok(channel) = conn.create_channel().await
+            {
+                let _ = channel
+                    .basic_publish(
+                        "",
+                        "click_events_queue",
+                        shared::lapin::options::BasicPublishOptions::default(),
+                        short_code.as_bytes(),
+                        shared::lapin::BasicProperties::default(),
+                    )
+                    .await;
             }
             Redirect::temporary(&original_url).into_response()
         }

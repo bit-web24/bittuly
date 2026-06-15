@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::models::Url;
 use shared::postgres::DbPool;
 use uuid::Uuid;

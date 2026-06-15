@@ -107,18 +107,18 @@ pub async fn delete_user(
         Ok(_) => {
             // Publish to RabbitMQ
             let payload = serde_json::json!({ "user_id": user_id }).to_string();
-            if let Ok(conn) = state.rabbitmq.get().await {
-                if let Ok(channel) = conn.create_channel().await {
-                    let _ = channel
-                        .basic_publish(
-                            "", // default exchange
-                            "user_deleted_queue",
-                            shared::lapin::options::BasicPublishOptions::default(),
-                            payload.as_bytes(),
-                            shared::lapin::BasicProperties::default(),
-                        )
-                        .await;
-                }
+            if let Ok(conn) = state.rabbitmq.get().await
+                && let Ok(channel) = conn.create_channel().await
+            {
+                let _ = channel
+                    .basic_publish(
+                        "", // default exchange
+                        "user_deleted_queue",
+                        shared::lapin::options::BasicPublishOptions::default(),
+                        payload.as_bytes(),
+                        shared::lapin::BasicProperties::default(),
+                    )
+                    .await;
             }
 
             StatusCode::NO_CONTENT.into_response()

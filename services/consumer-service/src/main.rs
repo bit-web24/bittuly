@@ -50,8 +50,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let channel = rabbit_conn.create_channel().await?;
 
     // Declare queues as durable (required by RabbitMQ 4.0+)
-    let mut options = QueueDeclareOptions::default();
-    options.durable = true;
+    let options = QueueDeclareOptions {
+        durable: true,
+        ..Default::default()
+    };
 
     channel
         .queue_declare("click_events_queue", options, FieldTable::default())
@@ -63,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let addr_port = amqp_url
         .split('@')
-        .last()
+        .next_back()
         .unwrap_or("127.0.0.1:5672")
         .split('/')
         .next()
@@ -94,8 +96,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         loop {
             tokio::select! {
                 maybe_delivery = click_consumer.next() => {
-                    if let Some(Ok(delivery)) = maybe_delivery {
-                        if let Ok(short_code) = String::from_utf8(delivery.data.clone()) {
+                    if let Some(Ok(delivery)) = maybe_delivery
+                        && let Ok(short_code) = String::from_utf8(delivery.data.clone())
+                    {
                             *batch.entry(short_code).or_insert(0) += 1;
                             total_clicks += 1;
 
@@ -124,7 +127,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 }
                                 batch.clear();
                                 total_clicks = 0;
-                            }
                         }
                     }
                 }
