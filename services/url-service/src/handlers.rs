@@ -137,10 +137,10 @@ pub async fn get_original_url(
     match url_service::get_original_url(&state.db, &short_code).await {
         Ok(Some((original_url, expires_at))) => {
             // Check if expired!
-            if let Some(exp) = expires_at {
-                if exp < chrono::Utc::now() {
-                    return StatusCode::GONE.into_response();
-                }
+            if let Some(exp) = expires_at
+                && exp < chrono::Utc::now()
+            {
+                return StatusCode::GONE.into_response();
             }
 
             // Dynamic Redis TTL

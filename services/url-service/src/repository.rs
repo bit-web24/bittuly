@@ -24,12 +24,13 @@ pub async fn add_shorten_url(
 
     if let Some(existing) = existing_url {
         // If it exists, check if it's currently EXPIRED
-        if let Some(exp) = existing.expires_at {
-            if exp < chrono::Utc::now() {
-                // It's expired! Reactivate it by updating `expires_at`
-                let reactivated: Url = sqlx::query_as(
-                    "UPDATE urls SET expires_at = $1, updated_at = now() 
-                     WHERE url_id = $2 
+        if let Some(exp) = existing.expires_at
+            && exp < chrono::Utc::now()
+        {
+            // It's expired! Reactivate it by updating `expires_at`
+            let reactivated: Url = sqlx::query_as(
+                    "UPDATE urls SET expires_at = $1, updated_at = now()
+                     WHERE url_id = $2
                      RETURNING url_id, short_code, original_url, user_id, click_count, expires_at, created_at, updated_at"
                 )
                 .bind(expires_at)
@@ -37,8 +38,7 @@ pub async fn add_shorten_url(
                 .fetch_one(db)
                 .await?;
 
-                return Ok(Some(reactivated));
-            }
+            return Ok(Some(reactivated));
         }
 
         // It exists and is NOT expired -> Return Conflict
