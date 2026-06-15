@@ -5,8 +5,10 @@ Bittuly is a production-grade, distributed URL shortener built with Rust (Axum) 
 ## 🏗️ System Architecture
 
 - **`auth-service` (Port 3001)**: Handles user signups, stateless OTP verification (via email or console), JWT generation, and user management.
-- **`url-service` (Port 3002)**: Handles URL shortening, redirects, and click analytics tracking. Uses Redis for caching short URLs and a background async worker for processing click metrics.
-- **`libs/shared`**: Shared Rust crate containing JWT logic, configurations, database connections, and middleware.
+- **`url-service` (Port 3002)**: Handles URL shortening, redirects, and click analytics tracking. Uses Redis for caching short URLs.
+- **`consumer-service`**: Background asynchronous worker that consumes events from RabbitMQ (e.g., batch-updating clicks, cascading user deletion cleanups).
+- **`libs/shared`**: Shared Rust crate containing RabbitMQ configurations, JWT logic, database connections, and middleware.
+- **`Event Bus (RabbitMQ)`**: Core messaging backbone providing *At-Least-Once* delivery for reliable, decoupled inter-service communication.
 - **`web/` (Port 5173)**: Modern React frontend built with Vite, Tailwind CSS, and a beautiful Notion-inspired design system.
 
 ---
@@ -23,6 +25,7 @@ This spins up:
 - `postgres-auth` (Port 5432) — Database: `bittuly_auth`
 - `postgres-urls` (Port 5433) — Database: `bittuly_urls`
 - `redis` (Port 6379)
+- `rabbitmq` (Port 5672) and Management UI (Port 15672)
 
 *Note: The Postgres schemas are automatically created via the init scripts in `docker/postgres-auth/init` and `docker/postgres-urls/init` the first time the containers start.*
 
@@ -40,7 +43,7 @@ VITE_URLS_API_URL=http://localhost:3002
 ```
 
 ### 3. Start the Microservices
-We have set up convenient Cargo aliases using `cargo-watch` so that both services auto-reload on code changes. You will need two separate terminal windows for the backend.
+We have set up convenient Cargo aliases using `cargo-watch` so that all services auto-reload on code changes. You will need three separate terminal windows for the backend.
 
 *(Ensure you have cargo-watch installed: `cargo install cargo-watch`)*
 
@@ -52,6 +55,11 @@ cargo dev-auth
 **Terminal 2 (URL Service):**
 ```bash
 cargo dev-urls
+```
+
+**Terminal 3 (Consumer Service):**
+```bash
+cargo dev-consumer
 ```
 
 ### 4. Start the Frontend

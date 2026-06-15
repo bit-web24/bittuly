@@ -25,7 +25,24 @@ export function UrlItem({ url, isNew = false, onDelete }: UrlItemProps) {
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(shortUrl)
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(shortUrl)
+      } else {
+        const textArea = document.createElement("textarea")
+        textArea.value = shortUrl
+        textArea.style.position = "absolute"
+        textArea.style.left = "-999999px"
+        document.body.prepend(textArea)
+        textArea.select()
+        try {
+          document.execCommand("copy")
+        } catch (error) {
+          console.error(error)
+          throw new Error("copy failed")
+        } finally {
+          textArea.remove()
+        }
+      }
       setCopied(true)
       toast.success("Copied to clipboard!")
       setTimeout(() => setCopied(false), 2000)
