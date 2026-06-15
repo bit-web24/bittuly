@@ -1,7 +1,9 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::DateTime;
 use chrono::Utc;
+use moka::future::Cache;
 use serde::Serialize;
 use shared::redis::RedisConn;
 use sqlx::PgPool;
@@ -17,6 +19,7 @@ pub struct UrlState {
     pub started_at: Instant,
     #[allow(dead_code)]
     pub cors_origin: String,
+    pub l1_cache: Cache<String, Option<(String, Option<DateTime<Utc>>)>>,
 }
 
 impl UrlState {
@@ -26,12 +29,18 @@ impl UrlState {
         db: PgPool,
         cors_origin: String,
     ) -> Self {
+        let l1_cache = Cache::builder()
+            .max_capacity(1_000_000)
+            .time_to_live(Duration::from_secs(3))
+            .build();
+
         Self {
             rabbitmq,
             db,
             redis,
             started_at: Instant::now(),
             cors_origin,
+            l1_cache,
         }
     }
 }

@@ -100,88 +100,87 @@ pub async fn get_original_url(
     State(state): State<UrlStateRef>,
     Path(short_code): Path<String>,
 ) -> impl IntoResponse {
-    let mut redis = state.redis.clone();
+    // Singleflight Cache Coalescing (Thundering Herd Protection)
+    // If 200,000 requests hit this exact line simultaneously, ONLY 1 will execute the async block.
+    // The other 199,999 will safely wait in memory and instantly receive the exact same result!
+    let result = state
+        .l1_cache
+        .get_with(short_code.clone(), async {
+            let mut redis = state.redis.clone();
 
-    // Cache lookup
-    let cached: Option<String> = match redis.get::<_, Option<String>>(&short_code).await {
-        Ok(v) => v,
-        Err(e) => {
-            // Redis unavailable — non-fatal, fall through to DB
-            tracing::warn!("redis get failed (falling back to db): {e}");
-            None
-        }
-    };
-
-    if let Some(original_url) = cached {
-        tracing::info!(short_code, "cache hit");
-
-        // Publish click to RabbitMQ
-        if let Ok(conn) = state.rabbitmq.get().await
-            && let Ok(channel) = conn.create_channel().await
-        {
-            let _ = channel
-                .basic_publish(
-                    "",
-                    "click_events_queue",
-                    shared::lapin::options::BasicPublishOptions::default(),
-                    short_code.as_bytes(),
-                    shared::lapin::BasicProperties::default(),
-                )
-                .await;
-        }
-        return Redirect::temporary(&original_url).into_response();
-    }
-
-    // ── 2. Cache miss — query DB ───────────────────────────────────────────
-    tracing::info!(short_code, "cache miss");
-    match url_service::get_original_url(&state.db, &short_code).await {
-        Ok(Some((original_url, expires_at))) => {
-            if let Some(exp) = expires_at
-                && exp < chrono::Utc::now()
-            {
-                return StatusCode::GONE.into_response();
-            }
-
-            // Dynamic Redis TTL
-            let ttl: u64 = if let Some(exp) = expires_at {
-                let remaining = exp.signed_duration_since(chrono::Utc::now()).num_seconds();
-                if remaining <= 0 {
-                    return StatusCode::GONE.into_response(); // Just in case
+            // 1. Try Redis
+            let cached: Option<String> = match redis.get::<_, Option<String>>(&short_code).await {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("redis get failed (falling back to db): {e}");
+                    None
                 }
-                remaining.try_into().unwrap_or(60 * 60 * 24)
-            } else {
-                60 * 60 * 24
             };
 
-            // Populate cache with dynamic TTL, non-fatal if Redis is down
-            if let Err(e) = redis
-                .set_ex::<_, _, ()>(&short_code, &original_url, ttl)
-                .await
-            {
-                tracing::warn!("redis set_ex failed: {e}");
+            if let Some(original_url) = cached {
+                tracing::info!(short_code, "cache hit");
+                // If it's in Redis, it's guaranteed valid because Redis handles TTL eviction natively.
+                return Some((original_url, None));
             }
 
-            // Publish click to RabbitMQ
-            if let Ok(conn) = state.rabbitmq.get().await
-                && let Ok(channel) = conn.create_channel().await
-            {
-                let _ = channel
-                    .basic_publish(
-                        "",
-                        "click_events_queue",
-                        shared::lapin::options::BasicPublishOptions::default(),
-                        short_code.as_bytes(),
-                        shared::lapin::BasicProperties::default(),
-                    )
-                    .await;
+            // 2. Try DB
+            tracing::info!(short_code, "cache miss");
+            match url_service::get_original_url(&state.db, &short_code).await {
+                Ok(Some((original_url, expires_at))) => {
+                    // Populate Redis
+                    let ttl: u64 = if let Some(exp) = expires_at {
+                        let remaining = exp.signed_duration_since(chrono::Utc::now()).num_seconds();
+                        if remaining <= 0 {
+                            return Some((original_url, expires_at)); // Let caller handle expiration
+                        }
+                        remaining.try_into().unwrap_or(60 * 60 * 24) // if timestamp is known, but expired, use default TTL = 24 hours
+                    } else {
+                        60 * 60 * 24 // if timestamp is unknown, use default TTL = 24 hours
+                    };
+
+                    if let Err(e) = redis
+                        .set_ex::<_, _, ()>(&short_code, &original_url, ttl)
+                        .await
+                    {
+                        tracing::warn!("redis set_ex failed: {e}");
+                    }
+
+                    Some((original_url, expires_at))
+                }
+                _ => None, // Not found or error
             }
+        })
+        .await;
+
+    // Process Result
+    match result {
+        Some((original_url, expires_at)) => {
+            // Re-verify expiration in case it expired while sitting in the 3-second L1 microcache
+            if let Some(exp) = expires_at {
+                if exp < chrono::Utc::now() {
+                    state.l1_cache.remove(&short_code).await;
+                    return StatusCode::GONE.into_response();
+                }
+            }
+
+            // Publish click event asynchronously via RabbitMQ
+            if let Ok(conn) = state.rabbitmq.get().await {
+                if let Ok(channel) = conn.create_channel().await {
+                    let _ = channel
+                        .basic_publish(
+                            "",
+                            "click_events_queue",
+                            shared::lapin::options::BasicPublishOptions::default(),
+                            short_code.as_bytes(),
+                            shared::lapin::BasicProperties::default(),
+                        )
+                        .await;
+                }
+            }
+
             Redirect::temporary(&original_url).into_response()
         }
-        Ok(None) => StatusCode::NOT_FOUND.into_response(),
-        Err(err) => {
-            tracing::error!("{:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
+        None => StatusCode::NOT_FOUND.into_response(),
     }
 }
 
