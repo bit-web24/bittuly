@@ -44,6 +44,7 @@ pub struct Url {
     pub original_url: String,
     pub user_id: Uuid,
     pub click_count: i64,
+    pub expires_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

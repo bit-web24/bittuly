@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS urls (
   original_url TEXT NOT NULL,
   user_id UUID NOT NULL,
   click_count BIGINT NOT NULL DEFAULT 0,
+  expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(original_url, user_id)
@@ -15,3 +16,4 @@ CREATE TABLE IF NOT EXISTS urls (
 CREATE INDEX IF NOT EXISTS idx_urls_user_id ON urls(user_id, url_id DESC);
 CREATE INDEX IF NOT EXISTS idx_urls_short_code ON urls(short_code);
 CREATE INDEX IF NOT EXISTS idx_urls_original_url_trgm ON urls USING GIN (original_url gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_urls_expires_at ON urls(expires_at);

@@ -5,6 +5,7 @@ export interface ShortenedUrl {
   short_code: string
   original_url: string
   click_count: number
+  expires_at: string | null
   created_at: string
 }
 
@@ -13,10 +14,10 @@ export interface UrlsPage {
   next_cursor: string | null
 }
 
-export async function createUrl(original_url: string): Promise<ShortenedUrl> {
+export async function createUrl(original_url: string, expires_at?: string): Promise<ShortenedUrl> {
   return apiRequest(URLS_BASE_URL, "/api/urls/", {
     method: "POST",
-    body: JSON.stringify({ original_url }),
+    body: JSON.stringify({ original_url, expires_at }),
   })
 }
 

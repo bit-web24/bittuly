@@ -1,6 +1,6 @@
 import * as React from "react"
 import { toast } from "sonner"
-import { Link2, Plus, ChevronsDown, Search } from "lucide-react"
+import { Timer, Link2, Plus, ChevronsDown, Search } from "lucide-react"
 import { createUrl, deleteUrl, getUrlsPage, type ShortenedUrl } from "@/api/urls"
 import { AppLayout } from "@/components/AppLayout"
 import { UrlItem } from "@/components/UrlItem"
@@ -22,6 +22,8 @@ export function Dashboard() {
   const [urls, setUrls] = React.useState<ShortenedUrl[]>([])
   const [newIds, setNewIds] = React.useState<Set<number>>(new Set())
   const [inputUrl, setInputUrl] = React.useState("")
+  const [expiresAt, setExpiresAt] = React.useState("")
+  const [showExpiration, setShowExpiration] = React.useState(false)
   const [inputError, setInputError] = React.useState(false)
   const [isShortening, setIsShortening] = React.useState(false)
   const [isLoadingUrls, setIsLoadingUrls] = React.useState(true)
@@ -77,11 +79,14 @@ export function Dashboard() {
     setInputError(false)
     setIsShortening(true)
     try {
-      const created = await createUrl(trimmed)
+      const expiryIso = expiresAt ? new Date(expiresAt).toISOString() : undefined
+      const created = await createUrl(trimmed, expiryIso)
       // Prepend new URL — doesn't disturb pagination cursor
       setUrls((prev) => [created, ...prev])
       setNewIds((prev) => new Set(prev).add(created.id))
       setInputUrl("")
+      setExpiresAt("")
+      setShowExpiration(false)
       setTimeout(() => {
         setNewIds((prev) => {
           const next = new Set(prev)
@@ -127,35 +132,74 @@ export function Dashboard() {
           <p className="mb-3 text-sm font-medium text-muted-foreground">
             Shorten a new URL
           </p>
-          <form onSubmit={handleShorten} className="flex gap-2">
-            <div className="flex-1">
-              <Input
-                ref={inputRef}
-                placeholder="Paste a long URL here..."
-                value={inputUrl}
-                onChange={(e) => {
-                  setInputUrl(e.target.value)
-                  if (inputError) setInputError(false)
-                }}
-                aria-invalid={inputError}
-                className={inputError ? "animate-shake" : ""}
-              />
-              {inputError && (
-                <p className="mt-1 text-xs text-destructive">
-                  Please enter a valid URL.
-                </p>
-              )}
+          <form onSubmit={handleShorten} className="flex flex-col gap-3">
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input
+                  ref={inputRef}
+                  placeholder="Paste a long URL here..."
+                  value={inputUrl}
+                  onChange={(e) => {
+                    setInputUrl(e.target.value)
+                    if (inputError) setInputError(false)
+                  }}
+                  aria-invalid={inputError}
+                  className={inputError ? "animate-shake" : ""}
+                />
+                {inputError && (
+                  <p className="mt-1 text-xs text-destructive">
+                    Please enter a valid URL.
+                  </p>
+                )}
+              </div>
+              <Button type="submit" disabled={isShortening} className="shrink-0">
+                {isShortening ? (
+                  <Spinner className="size-4" />
+                ) : (
+                  <>
+                    <Plus className="size-4" />
+                    Shorten
+                  </>
+                )}
+              </Button>
             </div>
-            <Button type="submit" disabled={isShortening} className="shrink-0">
-              {isShortening ? (
-                <Spinner className="size-4" />
-              ) : (
-                <>
-                  <Plus className="size-4" />
-                  Shorten
-                </>
-              )}
-            </Button>
+            
+            {showExpiration ? (
+              <div className="flex items-center gap-2 text-sm animate-in fade-in slide-in-from-top-1">
+                <Timer className="size-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Expires at:</span>
+                <Input
+                  type="datetime-local"
+                  value={expiresAt}
+                  onChange={(e) => setExpiresAt(e.target.value)}
+                  className="w-auto h-8 text-xs bg-muted/50"
+                />
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-8 px-2 text-xs text-muted-foreground hover:text-destructive"
+                  onClick={() => {
+                    setExpiresAt("")
+                    setShowExpiration(false)
+                  }}
+                >
+                  Remove
+                </Button>
+              </div>
+            ) : (
+              <div>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowExpiration(true)}
+                >
+                  + Add expiration time
+                </Button>
+              </div>
+            )}
           </form>
         </div>
 

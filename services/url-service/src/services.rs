@@ -6,14 +6,15 @@ pub async fn shorten_url(
     db: &DbPool,
     original_url: &str,
     user_id: Uuid,
+    expires_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<Option<Url>, sqlx::Error> {
-    url_repository::add_shorten_url(db, original_url, user_id).await
+    url_repository::add_shorten_url(db, original_url, user_id, expires_at).await
 }
 
 pub async fn get_original_url(
     db: &DbPool,
     short_code: &str,
-) -> Result<Option<String>, sqlx::Error> {
+) -> Result<Option<(String, Option<chrono::DateTime<chrono::Utc>>)>, sqlx::Error> {
     url_repository::get_original_url(db, short_code).await
 }
 

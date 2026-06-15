@@ -70,6 +70,7 @@ pub async fn get_all_urls(
 pub struct ShortenUrlRequest {
     #[validate(url)]
     pub original_url: String,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub async fn shorten_url(
@@ -80,7 +81,8 @@ pub async fn shorten_url(
     if let Err(errors) = body.validate() {
         return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
     }
-    match url_service::shorten_url(&state.db, &body.original_url, claims.sub).await {
+    match url_service::shorten_url(&state.db, &body.original_url, claims.sub, body.expires_at).await
+    {
         Ok(Some(url)) => (StatusCode::CREATED, Json(url)).into_response(),
         Ok(None) => (
             StatusCode::CONFLICT,
@@ -133,10 +135,28 @@ pub async fn get_original_url(
     // ── 2. Cache miss — query DB ───────────────────────────────────────────
     tracing::info!(short_code, "cache miss");
     match url_service::get_original_url(&state.db, &short_code).await {
-        Ok(Some(original_url)) => {
-            // Populate cache with 24 h TTL, non-fatal if Redis is down
+        Ok(Some((original_url, expires_at))) => {
+            // Check if expired!
+            if let Some(exp) = expires_at {
+                if exp < chrono::Utc::now() {
+                    return StatusCode::GONE.into_response();
+                }
+            }
+
+            // Dynamic Redis TTL
+            let ttl: u64 = if let Some(exp) = expires_at {
+                let remaining = exp.signed_duration_since(chrono::Utc::now()).num_seconds();
+                if remaining <= 0 {
+                    return StatusCode::GONE.into_response(); // Just in case
+                }
+                remaining.try_into().unwrap_or(60 * 60 * 24)
+            } else {
+                60 * 60 * 24
+            };
+
+            // Populate cache with dynamic TTL, non-fatal if Redis is down
             if let Err(e) = redis
-                .set_ex::<_, _, ()>(&short_code, &original_url, 60 * 60 * 24)
+                .set_ex::<_, _, ()>(&short_code, &original_url, ttl)
                 .await
             {
                 tracing::warn!("redis set_ex failed: {e}");

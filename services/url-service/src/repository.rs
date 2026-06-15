@@ -10,27 +10,49 @@ pub async fn add_shorten_url(
     db: &DbPool,
     original_url: &str,
     user_id: Uuid,
+    expires_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<Option<Url>, sqlx::Error> {
-    // Pre-check: avoid advancing the sequence on a duplicate
-    let exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM urls WHERE original_url = $1 AND user_id = $2)",
+    // Pre-check: see if the user already shortened this URL
+    let existing_url: Option<Url> = sqlx::query_as(
+        "SELECT url_id, short_code, original_url, user_id, click_count, expires_at, created_at, updated_at
+         FROM urls WHERE original_url = $1 AND user_id = $2"
     )
     .bind(original_url)
     .bind(user_id)
-    .fetch_one(db)
+    .fetch_optional(db)
     .await?;
 
-    if exists {
+    if let Some(existing) = existing_url {
+        // If it exists, check if it's currently EXPIRED
+        if let Some(exp) = existing.expires_at {
+            if exp < chrono::Utc::now() {
+                // It's expired! Reactivate it by updating `expires_at`
+                let reactivated: Url = sqlx::query_as(
+                    "UPDATE urls SET expires_at = $1, updated_at = now() 
+                     WHERE url_id = $2 
+                     RETURNING url_id, short_code, original_url, user_id, click_count, expires_at, created_at, updated_at"
+                )
+                .bind(expires_at)
+                .bind(existing.url_id)
+                .fetch_one(db)
+                .await?;
+
+                return Ok(Some(reactivated));
+            }
+        }
+
+        // It exists and is NOT expired -> Return Conflict
         return Ok(None);
     }
 
     let mut tx = db.begin().await?;
 
     let url_id: i64 = match sqlx::query_scalar(
-        "INSERT INTO urls (original_url, user_id) VALUES ($1, $2) RETURNING url_id",
+        "INSERT INTO urls (original_url, user_id, expires_at) VALUES ($1, $2, $3) RETURNING url_id",
     )
     .bind(original_url)
     .bind(user_id)
+    .bind(expires_at)
     .fetch_one(&mut *tx)
     .await
     {
@@ -47,7 +69,7 @@ pub async fn add_shorten_url(
 
     let url = sqlx::query_as(
         "UPDATE urls SET short_code = $1 WHERE url_id = $2 \
-         RETURNING url_id, short_code, original_url, user_id, click_count, created_at, updated_at",
+         RETURNING url_id, short_code, original_url, user_id, click_count, expires_at, created_at, updated_at",
     )
     .bind(&short_code)
     .bind(url_id)
@@ -62,13 +84,15 @@ pub async fn add_shorten_url(
 pub async fn get_original_url(
     db: &DbPool,
     short_code: &str,
-) -> Result<Option<String>, sqlx::Error> {
-    let original_url = sqlx::query_scalar("SELECT original_url FROM urls WHERE short_code = $1")
-        .bind(short_code)
-        .fetch_optional(db)
-        .await?;
+) -> Result<Option<(String, Option<chrono::DateTime<chrono::Utc>>)>, sqlx::Error> {
+    let row = sqlx::query_as::<_, (String, Option<chrono::DateTime<chrono::Utc>>)>(
+        "SELECT original_url, expires_at FROM urls WHERE short_code = $1",
+    )
+    .bind(short_code)
+    .fetch_optional(db)
+    .await?;
 
-    Ok(original_url)
+    Ok(row)
 }
 
 /// One page of URLs for a user.
@@ -98,7 +122,7 @@ pub async fn get_urls_page(
     let search_pattern = search.map(|s| format!("%{}%", s));
 
     let rows: Vec<Url> = sqlx::query_as(
-        "SELECT url_id, short_code, original_url, user_id, click_count, created_at, updated_at
+        "SELECT url_id, short_code, original_url, user_id, click_count, expires_at, created_at, updated_at
          FROM urls
          WHERE user_id = $1
            AND ($2::bigint IS NULL OR url_id < $2)
