@@ -136,7 +136,6 @@ pub async fn get_original_url(
     tracing::info!(short_code, "cache miss");
     match url_service::get_original_url(&state.db, &short_code).await {
         Ok(Some((original_url, expires_at))) => {
-            // Check if expired!
             if let Some(exp) = expires_at
                 && exp < chrono::Utc::now()
             {
@@ -178,9 +177,7 @@ pub async fn get_original_url(
             }
             Redirect::temporary(&original_url).into_response()
         }
-        Ok(None) => {
-            Redirect::temporary(&format!("{}/unavailable", state.cors_origin)).into_response()
-        }
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(err) => {
             tracing::error!("{:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR.into_response()

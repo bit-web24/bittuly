@@ -12,7 +12,7 @@ export function Unavailable() {
           <h1 className="mb-2 text-2xl font-bold tracking-tight">Link Unavailable</h1>
           
           <p className="mb-8 text-muted-foreground">
-            The short link you clicked does not exist or has been deleted by its owner.
+            The short link you clicked does not exist, has expired, or has been deleted by its owner.
           </p>
           
         </div>

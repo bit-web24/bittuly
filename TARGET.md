@@ -548,12 +548,12 @@ Each service exposes `GET /metrics` using the `metrics` + `metrics-exporter-prom
 ### Phase 3 — URL Expiration
 **Goal:** URLs can have a TTL; expired URLs return 410 Gone.
 
-- [ ] Add `expires_at TIMESTAMPTZ` column to pg-urls (nullable)
-- [ ] `POST /api/urls` body accepts optional `expires_at` RFC3339 timestamp
-- [ ] Redirect handler: if `expires_at < NOW()` → 410 Gone (check DB, skip Redis)
-- [ ] Redis TTL = `min(expires_at - now(), 24h)` instead of hardcoded 24h
-- [ ] Background sweeper task: every 5 minutes, delete expired URLs, publish `url.expired`
-- [ ] Frontend: date picker on shorten form; expired links shown with visual indicator
+- [x] Add `expires_at TIMESTAMPTZ` column to pg-urls (nullable)
+- [x] `POST /api/urls` body accepts optional `expires_at` RFC3339 timestamp
+- [x] Redirect handler: if `expires_at < NOW()` → 410 Gone (check DB, skip Redis)
+- [x] Redis TTL = `min(expires_at - now(), 24h)` instead of hardcoded 24h
+- [x] Background sweeper task: every 5 minutes, delete expired URLs, publish `url.expired`
+- [x] Frontend: date picker on shorten form; expired links shown with visual indicator
 
 ---
 
