@@ -27,11 +27,15 @@ async fn main() {
         .init();
 
     let settings = config::AuthConfig::from_env().expect("Failed to load setting from environment");
+    let amqp_url = std::env::var("RABBITMQ_URL").expect("RABBITMQ_URL must be set");
+
     let db = postgres::init_pg_pool(&settings.database_url)
         .await
         .expect("Failed to connect to Database");
 
-    let auth_state = Arc::new(models::AuthState::new(db));
+    let rabbitmq = shared::rabbitmq::init_rabbitmq_pool(&amqp_url).await;
+
+    let auth_state = Arc::new(models::AuthState::new(db, rabbitmq));
 
     let cors = CorsLayer::new()
         .allow_origin(

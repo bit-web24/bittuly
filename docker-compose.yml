@@ -1,4 +1,19 @@
 services:
+  rabbitmq:
+    image: rabbitmq:4.3.1-management-alpine
+    container_name: bittuly-rabbitmq
+    ports:
+      - "5672:5672"   # AMQP protocol port
+      - "15672:15672" # Management UI port
+    environment:
+      RABBITMQ_DEFAULT_USER: bittu
+      RABBITMQ_DEFAULT_PASS: bittu
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api-gateway:
     image: nginx:1.31.1-alpine
     container_name: bittuly-api-gateway

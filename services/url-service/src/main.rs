@@ -1,4 +1,3 @@
-mod consumer;
 mod handlers;
 mod health;
 mod models;
@@ -13,8 +12,6 @@ use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-
-use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() {
@@ -33,15 +30,12 @@ async fn main() {
     let redis = redis::init_redis(&settings.redis_url)
         .await
         .expect("Failed to connect to Redis");
+    let amqp_url = std::env::var("RABBITMQ_URL").expect("RABBITMQ_URL must be set");
+    let rabbitmq = shared::rabbitmq::init_rabbitmq_pool(&amqp_url).await;
 
-    // Consumer task — two flush triggers:
-    //   1. Size  : every 17 accumulated click events
-    //   2. Timer : every 30 seconds (so low-traffic links are never stuck)
-    let consumer_db = db.clone();
-    let (tx, rx) = mpsc::unbounded_channel::<String>();
-    let consumer_handler = consumer::spawn_consumer(rx, consumer_db);
+    // Consumer logic moved to consumer-service (Phase 2 RabbitMQ)
     let url_state = Arc::new(models::UrlState::new(
-        tx.clone(),
+        rabbitmq,
         redis,
         db,
         settings.cors_origin.clone(),
@@ -84,8 +78,4 @@ async fn main() {
     if let Err(err) = axum::serve(listener, app).await {
         eprintln!("server error: {err}");
     }
-
-    // Signal consumer to stop and wait for it to drain
-    drop(tx);
-    consumer_handler.await.unwrap();
 }

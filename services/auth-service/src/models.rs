@@ -11,14 +11,16 @@ use validator::Validate;
 
 pub struct AuthState {
     pub db: PgPool,
+    pub rabbitmq: shared::deadpool_lapin::Pool,
     #[allow(dead_code)]
     pub started_at: Instant,
 }
 
 impl AuthState {
-    pub fn new(db: PgPool) -> Self {
+    pub fn new(db: PgPool, rabbitmq: shared::deadpool_lapin::Pool) -> Self {
         Self {
             db,
+            rabbitmq,
             started_at: Instant::now(),
         }
     }

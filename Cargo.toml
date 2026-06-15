@@ -4,7 +4,7 @@
 # edition = "2024"
 
 [workspace]
-members = ["libs/shared", "services/auth-service", "services/url-service"]
+members = ["libs/shared", "services/auth-service", "services/url-service", "services/consumer-service"]
 resolver = "3"
 
 # [dependencies]

@@ -112,8 +112,20 @@ pub async fn get_original_url(
 
     if let Some(original_url) = cached {
         tracing::info!(short_code, "cache hit");
-        if let Err(e) = state.tx.send(short_code) {
-            tracing::warn!("click channel send failed: {e}");
+
+        // Publish click to RabbitMQ
+        if let Ok(conn) = state.rabbitmq.get().await {
+            if let Ok(channel) = conn.create_channel().await {
+                let _ = channel
+                    .basic_publish(
+                        "",
+                        "click_events_queue",
+                        shared::lapin::options::BasicPublishOptions::default(),
+                        short_code.as_bytes(),
+                        shared::lapin::BasicProperties::default(),
+                    )
+                    .await;
+            }
         }
         return Redirect::temporary(&original_url).into_response();
     }
@@ -130,8 +142,19 @@ pub async fn get_original_url(
                 tracing::warn!("redis set_ex failed: {e}");
             }
 
-            if let Err(e) = state.tx.send(short_code) {
-                tracing::warn!("click channel send failed: {e}");
+            // Publish click to RabbitMQ
+            if let Ok(conn) = state.rabbitmq.get().await {
+                if let Ok(channel) = conn.create_channel().await {
+                    let _ = channel
+                        .basic_publish(
+                            "",
+                            "click_events_queue",
+                            shared::lapin::options::BasicPublishOptions::default(),
+                            short_code.as_bytes(),
+                            shared::lapin::BasicProperties::default(),
+                        )
+                        .await;
+                }
             }
             Redirect::temporary(&original_url).into_response()
         }
