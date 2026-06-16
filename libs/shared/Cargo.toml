@@ -16,3 +16,4 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 lapin = "2.5.0"
 deadpool-lapin = "0.12.1"
+metrics = "0.24"

@@ -83,7 +83,10 @@ pub async fn shorten_url(
     }
     match url_service::shorten_url(&state.db, &body.original_url, claims.sub, body.expires_at).await
     {
-        Ok(Some(url)) => (StatusCode::CREATED, Json(url)).into_response(),
+        Ok(Some(url)) => {
+            metrics::counter!("links_shortened").increment(1);
+            (StatusCode::CREATED, Json(url)).into_response()
+        }
         Ok(None) => (
             StatusCode::CONFLICT,
             Json(serde_json::json!({ "error": "You have already shortened this URL" })),
@@ -119,12 +122,14 @@ pub async fn get_original_url(
 
             if let Some(original_url) = cached {
                 tracing::info!(short_code, "cache hit");
+                metrics::counter!("cache_hits").increment(1);
                 // If it's in Redis, it's guaranteed valid because Redis handles TTL eviction natively.
                 return Some((original_url, None));
             }
 
             // 2. Try DB
             tracing::info!(short_code, "cache miss");
+            metrics::counter!("cache_misses").increment(1);
             match url_service::get_original_url(&state.db, &short_code).await {
                 Ok(Some((original_url, expires_at))) => {
                     // Populate Redis
@@ -176,6 +181,8 @@ pub async fn get_original_url(
                         shared::lapin::BasicProperties::default(),
                     )
                     .await;
+                metrics::counter!("rabbit_mq_events_published", "queue" => "click_events_queue")
+                    .increment(1);
             }
 
             Redirect::temporary(&original_url).into_response()

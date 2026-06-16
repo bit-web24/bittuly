@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::DateTime;
 use chrono::Utc;
+use metrics_exporter_prometheus::PrometheusHandle;
 use serde::Deserialize;
 use serde::Serialize;
 use sqlx::PgPool;
@@ -14,14 +15,21 @@ pub struct AuthState {
     pub rabbitmq: shared::deadpool_lapin::Pool,
     #[allow(dead_code)]
     pub started_at: Instant,
+    #[allow(dead_code)]
+    pub prometheus_handle: PrometheusHandle,
 }
 
 impl AuthState {
-    pub fn new(db: PgPool, rabbitmq: shared::deadpool_lapin::Pool) -> Self {
+    pub fn new(
+        db: PgPool,
+        rabbitmq: shared::deadpool_lapin::Pool,
+        prometheus_handle: PrometheusHandle,
+    ) -> Self {
         Self {
             db,
             rabbitmq,
             started_at: Instant::now(),
+            prometheus_handle,
         }
     }
 }

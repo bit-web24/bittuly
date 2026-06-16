@@ -23,6 +23,6 @@ pub fn url_routes() -> Router<UrlStateRef> {
         .merge(protected)
         .route("/api/urls/health", get(health))
         .route("/api/urls/metrics", get(metrics))
-        // Public redirect (no auth required)
         .route("/{id}", get(get_original_url))
+        .layer(axum::middleware::from_fn(shared::metrics::track_metrics))
 }

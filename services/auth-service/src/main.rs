@@ -2,12 +2,14 @@ mod debug_handler;
 mod email;
 mod handlers;
 mod health;
+mod metrics;
 mod models;
 mod otp_store;
 mod repository;
 mod routes;
 mod services;
 
+use metrics_exporter_prometheus::PrometheusBuilder;
 use shared::config;
 use shared::postgres;
 use std::sync::Arc;
@@ -35,7 +37,11 @@ async fn main() {
 
     let rabbitmq = shared::rabbitmq::init_rabbitmq_pool(&amqp_url).await;
 
-    let auth_state = Arc::new(models::AuthState::new(db, rabbitmq));
+    let prometheus_handle = PrometheusBuilder::new()
+        .install_recorder()
+        .expect("Failed to install Prometheus recorder");
+
+    let auth_state = Arc::new(models::AuthState::new(db, rabbitmq, prometheus_handle));
 
     let cors = CorsLayer::new()
         .allow_origin(
