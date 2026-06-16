@@ -91,7 +91,31 @@ npm install
 npm run dev
 ```
 
-Your frontend is now available at `http://localhost:5173`!
+Your frontend is now available via the NGINX API Gateway at `http://localhost:8000` (or `http://localhost:5173` directly).
+
+---
+
+## 📊 API Gateway & Monitoring Stack
+
+Bittuly is fully instrumented with Prometheus and Grafana for real-time traffic observability.
+
+### 1. NGINX API Gateway (Port 8000)
+The API gateway serves as the main entry point to the system, handling CORS, proxying, and caching interceptions.
+- **Frontend App**: `http://localhost:8000`
+- **Auth API**: `http://localhost:8000/api/auth/*`
+- **URLs API**: `http://localhost:8000/api/urls/*`
+
+*Note: For security reasons, the raw `/metrics` endpoints are explicitly blocked (`403 Forbidden`) from being accessed through the public API gateway.*
+
+### 2. Prometheus (Port 9090)
+Prometheus runs entirely inside the internal Docker network (`network_mode: "host"`) and scrapes the raw metrics from the Rust services every 5 seconds.
+- **UI Endpoint**: `http://localhost:9090`
+
+### 3. Grafana (Port 3000)
+Grafana visualizes the telemetry data collected by Prometheus.
+- **UI Endpoint**: `http://localhost:3000`
+- **Default Login**: `admin` / `admin`
+- **Dashboards**: Grafana is pre-provisioned with the "Bittuly Live Traffic" dashboard, featuring RPS, Latency, Cache Hits/Misses, and Business Metrics.
 
 ---
 

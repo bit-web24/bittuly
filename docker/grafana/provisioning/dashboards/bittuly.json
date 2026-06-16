@@ -1,0 +1,62 @@
+{
+  "title": "Bittuly Live Traffic",
+  "uid": "bittuly-live",
+  "tags": ["bittuly"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "5s",
+  "panels": [
+    {
+      "title": "Requests per Second (RPS)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total[1m])) by (path)",
+          "legendFormat": "{{path}}"
+        }
+      ]
+    },
+    {
+      "title": "Global Latency (Seconds)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_request_duration_seconds_sum[1m])) / sum(rate(http_request_duration_seconds_count[1m]))",
+          "legendFormat": "Average Latency"
+        }
+      ]
+    },
+    {
+      "title": "Singleflight Cache Performance",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(increase(cache_hits[1m]))",
+          "legendFormat": "Cache Hits"
+        },
+        {
+          "expr": "sum(increase(cache_misses[1m]))",
+          "legendFormat": "Cache Misses"
+        }
+      ]
+    },
+    {
+      "title": "Business Metrics",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(increase(links_shortened[1m]))",
+          "legendFormat": "Links Created"
+        },
+        {
+          "expr": "sum(increase(rabbit_mq_events_published[1m]))",
+          "legendFormat": "RabbitMQ Click Events"
+        }
+      ]
+    }
+  ]
+}

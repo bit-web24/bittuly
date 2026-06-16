@@ -3,7 +3,7 @@ services:
     image: rabbitmq:4.3.1-management-alpine
     container_name: bittuly-rabbitmq
     ports:
-      - "5672:5672"   # AMQP protocol port
+      - "5672:5672" # AMQP protocol port
       - "15672:15672" # Management UI port
     environment:
       RABBITMQ_DEFAULT_USER: bittu
@@ -77,6 +77,22 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  prometheus:
+    image: prom/prometheus:v3-distroless
+    container_name: bittuly-prometheus
+    network_mode: "host"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:11.6
+    container_name: bittuly-grafana
+    network_mode: "host"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
 
 volumes:
   bittuly-pg-auth-data:
