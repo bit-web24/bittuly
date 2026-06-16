@@ -105,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("Consumer service listening on {}", addr_port);
     tracing::info!("Consumer service started and connected to RabbitMQ.");
 
-    // ─── Task 1: Click Events Consumer ───────────────────────────────────────
+    // Click Events Consumer
     let click_db = db.clone();
     let click_channel = rabbit_conn.create_channel().await?;
     let mut click_consumer = click_channel
@@ -200,7 +200,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     });
 
-    // ─── Task 2: User Deleted Events Consumer ────────────────────────────────
+    // User Deleted Events Consumer
     let user_db = db.clone();
     let user_channel = rabbit_conn.create_channel().await?;
     let mut user_consumer = user_channel

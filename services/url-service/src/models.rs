@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use chrono::DateTime;
 use chrono::Utc;
+use metrics_exporter_prometheus::PrometheusHandle;
 use moka::future::Cache;
 use serde::Serialize;
 use shared::redis::RedisConn;
@@ -22,6 +23,7 @@ pub struct UrlState {
     #[allow(dead_code)]
     pub cors_origin: String,
     pub l1_cache: Cache<String, CachedUrlResult>,
+    pub prometheus_handle: PrometheusHandle,
 }
 
 impl UrlState {
@@ -30,6 +32,7 @@ impl UrlState {
         redis: RedisConn,
         db: PgPool,
         cors_origin: String,
+        prometheus_handle: PrometheusHandle,
     ) -> Self {
         let l1_cache = Cache::builder()
             .max_capacity(1_000_000)
@@ -43,6 +46,7 @@ impl UrlState {
             started_at: Instant::now(),
             cors_origin,
             l1_cache,
+            prometheus_handle,
         }
     }
 }

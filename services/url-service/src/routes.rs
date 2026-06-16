@@ -6,6 +6,7 @@ use axum::{
 use crate::{
     handlers::{delete_url_handler, get_all_urls, get_original_url, shorten_url},
     health::health,
+    metrics::metrics,
     models::UrlStateRef,
 };
 use shared::jwt::jwt_auth;
@@ -21,6 +22,7 @@ pub fn url_routes() -> Router<UrlStateRef> {
     Router::new()
         .merge(protected)
         .route("/api/urls/health", get(health))
+        .route("/api/urls/metrics", get(metrics))
         // Public redirect (no auth required)
         .route("/{id}", get(get_original_url))
 }

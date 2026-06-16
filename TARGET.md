@@ -449,7 +449,7 @@ Each service exposes `GET /metrics` using the `metrics` + `metrics-exporter-prom
 | JWT validation | NGINX `auth_request` → `auth-service /api/auth/validate` |
 | Rate limiting — redirects | 20 req/s per IP |
 | Rate limiting — shorten | 10 req/min per user (X-User-Id key) |
-| URL safety | Google Safe Browsing API v4, checked before every INSERT |
+| URL safety | Google Safe Browsing API v5 / Web Risk, checked before every INSERT |
 | Secrets | Kubernetes Secrets + Sealed Secrets operator (safe to git-commit) |
 | Network policy | Deny-all default, allow-list per service |
 | Container hardening | `runAsNonRoot`, read-only root filesystem, `allowPrivilegeEscalation: false` |
@@ -557,10 +557,10 @@ Each service exposes `GET /metrics` using the `metrics` + `metrics-exporter-prom
 
 ---
 
-### Phase 4 — URL Safety Check
+### ⏭️ Phase 4 — URL Safety Check (DEFERRED)
 **Goal:** Prevent shortening of phishing / malware URLs.
 
-- [ ] Google Safe Browsing API v4 integration (free, 10k queries/day)
+- [ ] Google Safe Browsing API v5 (or Google Web Risk) integration
 - [ ] Called synchronously in `shorten_url` service, before DB write
 - [ ] 422 Unprocessable Entity + `{ "error": "URL flagged as unsafe" }` if matched
 - [ ] Fail-open: if Safe Browsing API is unreachable, log warning + allow request
@@ -709,4 +709,4 @@ open http://localhost:16686    # Jaeger
 ---
 
 *Document created: 2026-06-13*
-*Current status: Phase 3 — URL Expiration — IN PROGRESS*
+*Current status: Phase 5 — Metrics Instrumentation — IN PROGRESS*

@@ -1,10 +1,12 @@
 mod handlers;
 mod health;
+mod metrics;
 mod models;
 mod repository;
 mod routes;
 mod services;
 
+use metrics_exporter_prometheus::PrometheusBuilder;
 use shared::config;
 use shared::postgres;
 use shared::redis;
@@ -34,11 +36,16 @@ async fn main() {
     let rabbitmq = shared::rabbitmq::init_rabbitmq_pool(&amqp_url).await;
 
     // Consumer logic moved to consumer-service (Phase 2 RabbitMQ)
+    let prometheus_handle = PrometheusBuilder::new()
+        .install_recorder()
+        .expect("Failed to install Prometheus recorder");
+
     let url_state = Arc::new(models::UrlState::new(
         rabbitmq,
         redis,
         db,
         settings.cors_origin.clone(),
+        prometheus_handle,
     ));
 
     let cors = CorsLayer::new()
