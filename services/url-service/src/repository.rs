@@ -32,10 +32,11 @@ impl UrlRepo for PgUrlRepo {
         .fetch_optional(db)
         .await?;
 
-        if let Some(existing) = existing_url {
-            if let Some(exp) = existing.expires_at {
-                if exp < Utc::now() {
-                    let reactivated: Url = sqlx::query_as(
+        if let Some(existing) = existing_url
+            && let Some(exp) = existing.expires_at
+        {
+            if exp < Utc::now() {
+                let reactivated: Url = sqlx::query_as(
                             "UPDATE urls SET expires_at = $1, updated_at = now()
                              WHERE url_id = $2
                              RETURNING url_id, short_code, original_url, user_id, click_count, expires_at, created_at, updated_at"
@@ -45,9 +46,9 @@ impl UrlRepo for PgUrlRepo {
                         .fetch_one(db)
                         .await?;
 
-                    return Ok(Some(reactivated));
-                }
+                return Ok(Some(reactivated));
             }
+
             return Ok(None);
         }
 
