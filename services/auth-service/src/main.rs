@@ -3,6 +3,8 @@ mod email;
 mod handlers;
 mod health;
 mod metrics;
+#[cfg(test)]
+mod mock;
 mod models;
 mod otp_store;
 mod repo_trait;

@@ -52,7 +52,7 @@ impl UrlState {
 }
 pub type UrlStateRef = Arc<UrlState>;
 
-#[derive(sqlx::FromRow, Serialize, Clone, Debug)]
+#[derive(sqlx::FromRow, Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Url {
     #[serde(rename = "id")]
     pub url_id: i64,

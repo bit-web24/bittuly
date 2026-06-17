@@ -36,7 +36,7 @@ impl AuthState {
 
 pub type AuthStateRef = Arc<AuthState>;
 
-#[derive(sqlx::FromRow, Serialize, Clone, Debug)]
+#[derive(sqlx::FromRow, Serialize, serde::Deserialize, Clone, Debug)]
 pub struct User {
     pub id: Uuid,
     pub username: String,

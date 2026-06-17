@@ -1,6 +1,8 @@
 mod handlers;
 mod health;
 mod metrics;
+#[cfg(test)]
+mod mock;
 mod models;
 mod repo_trait;
 mod repository;
