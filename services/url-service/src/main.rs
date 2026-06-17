@@ -36,7 +36,9 @@ async fn main() {
         .await
         .expect("Failed to connect to Redis");
     let amqp_url = std::env::var("RABBITMQ_URL").expect("RABBITMQ_URL must be set");
-    let rabbitmq = shared::rabbitmq::init_rabbitmq_pool(&amqp_url).await;
+    let rabbitmq = shared::rabbitmq::init_rabbitmq_pool(&amqp_url)
+        .await
+        .expect("Failed to create RabbitMQ pool");
 
     // Consumer logic moved to consumer-service (Phase 2 RabbitMQ)
     let prometheus_handle = PrometheusBuilder::new()
@@ -81,9 +83,12 @@ async fn main() {
             .await
             .expect("failed to bind listener");
 
-    println!(
+    tracing::info!(
         "Url service listening on {}:{} [mode={} cors={}]",
-        settings.server_addr, settings.server_port, settings.mode, settings.cors_origin
+        settings.server_addr,
+        settings.server_port,
+        settings.mode,
+        settings.cors_origin
     );
 
     if let Err(err) = axum::serve(listener, app).await {

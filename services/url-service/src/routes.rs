@@ -15,7 +15,6 @@ pub fn url_routes() -> Router<UrlStateRef> {
     // API endpoints (require auth)
     let protected = Router::new()
         .route("/api/urls", post(shorten_url).get(get_all_urls))
-        .route("/api/urls/", post(shorten_url).get(get_all_urls))
         .route("/api/urls/{id}", axum::routing::delete(delete_url_handler))
         .layer(middleware::from_fn(jwt_auth));
 

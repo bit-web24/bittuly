@@ -8,14 +8,33 @@ use axum::response::IntoResponse;
 use serde_json::json;
 use shared::jwt::{Claims, clear_token_cookies, set_token_cookies};
 use uuid::Uuid;
-use validator::Validate;
+use validator::{Validate, ValidationErrors};
+
+/// Convert validator errors to a structured JSON-serializable map.
+fn validation_error_response(errors: ValidationErrors) -> impl IntoResponse {
+    let map: std::collections::HashMap<String, Vec<String>> = errors
+        .field_errors()
+        .iter()
+        .map(|(field, errs)| {
+            let messages = errs
+                .iter()
+                .map(|e| e.message.as_deref().unwrap_or("invalid value").to_string())
+                .collect();
+            (field.to_string(), messages)
+        })
+        .collect();
+    (
+        StatusCode::UNPROCESSABLE_ENTITY,
+        Json(json!({ "errors": map })),
+    )
+}
 
 pub async fn login(
     State(state): State<AuthStateRef>,
     Json(payload): Json<LoginPayload>,
 ) -> impl IntoResponse {
     if let Err(errors) = payload.validate() {
-        return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
+        return validation_error_response(errors).into_response();
     }
     match user_service::login(&*state.repo, &payload.email, &payload.password).await {
         Ok(auth) => {
@@ -26,7 +45,21 @@ pub async fn login(
             }
             response
         }
-        Err(_) => StatusCode::UNAUTHORIZED.into_response(),
+        // Distinguish authentication failures from infrastructure failures
+        Err(err)
+            if err.to_string().contains("invalid credentials")
+                || err.to_string().contains("not found") =>
+        {
+            StatusCode::UNAUTHORIZED.into_response()
+        }
+        Err(err) => {
+            tracing::error!("login DB error: {:?}", err);
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "error": "service temporarily unavailable" })),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -52,8 +85,19 @@ pub async fn get_user_by_id(
 
     match user_service::get_user_by_id(&*state.repo, user_id).await {
         Ok(Some(user)) => (StatusCode::OK, Json(user)).into_response(),
-        Ok(None) => StatusCode::NOT_FOUND.into_response(),
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "user not found" })),
+        )
+            .into_response(),
+        Err(err) => {
+            tracing::error!("get_user_by_id DB error: {:?}", err);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "internal server error" })),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -73,7 +117,7 @@ pub async fn update_user(
     }
 
     if let Err(errors) = payload.validate() {
-        return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
+        return validation_error_response(errors).into_response();
     }
 
     match user_service::update_user(&*state.repo, user_id, payload).await {
@@ -85,7 +129,14 @@ pub async fn update_user(
             }
             response
         }
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())).into_response(),
+        Err(err) => {
+            tracing::error!("update_user DB error: {:?}", err);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "internal server error" })),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -123,7 +174,14 @@ pub async fn delete_user(
 
             StatusCode::NO_CONTENT.into_response()
         }
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())).into_response(),
+        Err(err) => {
+            tracing::error!("delete_user DB error: {:?}", err);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "internal server error" })),
+            )
+                .into_response()
+        }
     }
 }
 

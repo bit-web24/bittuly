@@ -21,7 +21,6 @@ use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
-#[allow(dead_code)]
 async fn main() {
     tracing_subscriber::registry()
         .with(
@@ -38,7 +37,9 @@ async fn main() {
         .await
         .expect("Failed to connect to Database");
 
-    let rabbitmq = shared::rabbitmq::init_rabbitmq_pool(&amqp_url).await;
+    let rabbitmq = shared::rabbitmq::init_rabbitmq_pool(&amqp_url)
+        .await
+        .expect("Failed to create RabbitMQ pool");
 
     let prometheus_handle = PrometheusBuilder::new()
         .install_recorder()
@@ -77,9 +78,12 @@ async fn main() {
             .await
             .expect("failed to bind listener");
 
-    println!(
+    tracing::info!(
         "Auth service listening on {}:{} [mode={} cors={}]",
-        settings.server_addr, settings.server_port, settings.mode, settings.cors_origin
+        settings.server_addr,
+        settings.server_port,
+        settings.mode,
+        settings.cors_origin
     );
 
     if let Err(err) = axum::serve(listener, app).await {

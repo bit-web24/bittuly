@@ -102,8 +102,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .next()
         .unwrap_or("127.0.0.1:5672");
 
-    println!("Consumer service listening on {}", addr_port);
-    tracing::info!("Consumer service started and connected to RabbitMQ.");
+    tracing::info!(
+        "Consumer service started, connected to RabbitMQ at {}.",
+        addr_port
+    );
 
     // Click Events Consumer
     let click_db = db.clone();
@@ -150,6 +152,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                         if let Some(tag) = last_delivery_tag.take() {
                                             let _ = click_channel.basic_ack(tag, lapin::options::BasicAckOptions { multiple: true }).await;
                                         }
+                                        // Only clear after successful flush
+                                        batch.clear();
+                                        total_clicks = 0;
                                     }
                                     Err(e) => {
                                         let delay = 3_u64.pow(consecutive_failures.min(2) + 1);
@@ -159,10 +164,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                         if let Some(tag) = last_delivery_tag.take() {
                                             let _ = click_channel.basic_nack(tag, lapin::options::BasicNackOptions { multiple: true, requeue: true }).await;
                                         }
+                                        // Do NOT clear batch on failure — messages are requeued and will be redelivered.
                                     }
                                 }
-                                batch.clear();
-                                total_clicks = 0;
                         }
                     }
                 }
@@ -181,6 +185,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 if let Some(tag) = last_delivery_tag.take() {
                                     let _ = click_channel.basic_ack(tag, lapin::options::BasicAckOptions { multiple: true }).await;
                                 }
+                                // Only clear after successful flush
+                                batch.clear();
+                                total_clicks = 0;
                             }
                             Err(e) => {
                                 let delay = 3_u64.pow(consecutive_failures.min(2) + 1);
@@ -190,10 +197,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 if let Some(tag) = last_delivery_tag.take() {
                                     let _ = click_channel.basic_nack(tag, lapin::options::BasicNackOptions { multiple: true, requeue: true }).await;
                                 }
+                                // Do NOT clear batch on failure — messages are requeued and will be redelivered.
                             }
                         }
-                        batch.clear();
-                        total_clicks = 0;
                     }
                 }
             }

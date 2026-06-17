@@ -5,7 +5,7 @@ use axum::{
     response::Response,
 };
 use jsonwebtoken::{
-    DecodingKey, EncodingKey, Header, Validation, decode, encode, errors::ErrorKind,
+    Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode, errors::ErrorKind,
 };
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -104,10 +104,12 @@ pub fn decode_pending_token(
     token: &str,
 ) -> Result<OtpClaims, Box<dyn std::error::Error + Send + Sync>> {
     let secret = std::env::var("JWT_SECRET")?;
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.validate_exp = true;
     let data = decode::<OtpClaims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
-        &Validation::default(),
+        &validation,
     )?;
     if data.claims.token_type != PENDING_TOKEN_TYPE {
         return Err("invalid token type".into());
@@ -176,10 +178,12 @@ pub async fn jwt_auth(mut req: Request, next: Next) -> Result<Response, StatusCo
 
     let secret = std::env::var("JWT_SECRET").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.validate_exp = true;
     match decode::<Claims>(
         &access_token,
         &DecodingKey::from_secret(secret.as_bytes()),
-        &Validation::default(),
+        &validation,
     ) {
         Ok(data) if data.claims.token_type == ACCESS_TOKEN_TYPE => {
             req.extensions_mut().insert(data.claims);
@@ -201,10 +205,12 @@ async fn refresh_access_token(
 ) -> Result<Response, StatusCode> {
     let refresh_token = parse_cookie(cookie_str, COOKIE_REFRESH).ok_or(StatusCode::UNAUTHORIZED)?;
 
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.validate_exp = true;
     let data = decode::<Claims>(
         &refresh_token,
         &DecodingKey::from_secret(secret.as_bytes()),
-        &Validation::default(),
+        &validation,
     )
     .map_err(|_| StatusCode::UNAUTHORIZED)?;
 

@@ -32,6 +32,8 @@ pub fn store_otp(email: &str, otp: &str) {
     if let Ok(mut guard) = store().write() {
         guard.insert(email.to_string(), entry);
     }
+    // Only log OTP in debug builds — NEVER in production binaries.
+    #[cfg(debug_assertions)]
     tracing::info!("[DEV OTP] email={} otp={}", email, otp);
 }
 
