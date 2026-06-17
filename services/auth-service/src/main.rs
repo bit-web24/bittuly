@@ -5,6 +5,7 @@ mod health;
 mod metrics;
 mod models;
 mod otp_store;
+mod repo_trait;
 mod repository;
 mod routes;
 mod services;
@@ -41,7 +42,8 @@ async fn main() {
         .install_recorder()
         .expect("Failed to install Prometheus recorder");
 
-    let auth_state = Arc::new(models::AuthState::new(db, rabbitmq, prometheus_handle));
+    let pg_repo = Arc::new(repository::PgUserRepo(db));
+    let auth_state = Arc::new(models::AuthState::new(pg_repo, rabbitmq, prometheus_handle));
 
     let cors = CorsLayer::new()
         .allow_origin(

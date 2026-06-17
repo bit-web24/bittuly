@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
+use crate::repo_trait::UserRepo;
 use chrono::DateTime;
 use chrono::Utc;
 use metrics_exporter_prometheus::PrometheusHandle;
 use serde::Deserialize;
 use serde::Serialize;
-use sqlx::PgPool;
 use tokio::time::Instant;
 use uuid::Uuid;
 use validator::Validate;
 
 pub struct AuthState {
-    pub db: PgPool,
+    pub repo: Arc<dyn UserRepo>,
     pub rabbitmq: shared::deadpool_lapin::Pool,
     #[allow(dead_code)]
     pub started_at: Instant,
@@ -21,12 +21,12 @@ pub struct AuthState {
 
 impl AuthState {
     pub fn new(
-        db: PgPool,
+        repo: Arc<dyn UserRepo>,
         rabbitmq: shared::deadpool_lapin::Pool,
         prometheus_handle: PrometheusHandle,
     ) -> Self {
         Self {
-            db,
+            repo,
             rabbitmq,
             started_at: Instant::now(),
             prometheus_handle,
@@ -36,7 +36,7 @@ impl AuthState {
 
 pub type AuthStateRef = Arc<AuthState>;
 
-#[derive(sqlx::FromRow, Serialize)]
+#[derive(sqlx::FromRow, Serialize, Clone, Debug)]
 pub struct User {
     pub id: Uuid,
     pub username: String,
@@ -47,7 +47,7 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 pub struct AuthUserResponse {
     pub user: User,
     pub token: String,

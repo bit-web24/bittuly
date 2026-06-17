@@ -17,7 +17,7 @@ pub async fn login(
     if let Err(errors) = payload.validate() {
         return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
     }
-    match user_service::login(&state.db, &payload.email, &payload.password).await {
+    match user_service::login(&*state.repo, &payload.email, &payload.password).await {
         Ok(auth) => {
             let mut response = (StatusCode::OK, Json(auth.user)).into_response();
             if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {
@@ -50,7 +50,7 @@ pub async fn get_user_by_id(
         return StatusCode::FORBIDDEN.into_response();
     }
 
-    match user_service::get_user_by_id(&state.db, user_id).await {
+    match user_service::get_user_by_id(&*state.repo, user_id).await {
         Ok(Some(user)) => (StatusCode::OK, Json(user)).into_response(),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())).into_response(),
@@ -76,7 +76,7 @@ pub async fn update_user(
         return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
     }
 
-    match user_service::update_user(&state.db, user_id, payload).await {
+    match user_service::update_user(&*state.repo, user_id, payload).await {
         Ok(auth) => {
             let mut response = (StatusCode::OK, Json(auth.user)).into_response();
             if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {
@@ -103,7 +103,7 @@ pub async fn delete_user(
         return StatusCode::FORBIDDEN.into_response();
     }
 
-    match user_service::delete_user(&state.db, user_id).await {
+    match user_service::delete_user(&*state.repo, user_id).await {
         Ok(_) => {
             // Publish to RabbitMQ
             let payload = serde_json::json!({ "user_id": user_id }).to_string();
@@ -140,7 +140,7 @@ pub async fn request_signup_handler(
     if let Err(errors) = payload.validate() {
         return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
     }
-    match user_service::request_signup(&state.db, payload).await {
+    match user_service::request_signup(&*state.repo, payload).await {
         Ok(pending_token) => (
             StatusCode::OK,
             Json(json!({ "pending_token": pending_token })),
@@ -167,7 +167,7 @@ pub async fn verify_otp_handler(
     if let Err(errors) = payload.validate() {
         return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
     }
-    match user_service::verify_otp(&state.db, &payload.pending_token, &payload.otp).await {
+    match user_service::verify_otp(&*state.repo, &payload.pending_token, &payload.otp).await {
         Ok(auth) => {
             let mut response = (StatusCode::CREATED, Json(auth.user)).into_response();
             if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {
