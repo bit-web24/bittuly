@@ -2,6 +2,7 @@ mod handlers;
 mod health;
 mod metrics;
 mod models;
+mod repo_trait;
 mod repository;
 mod routes;
 mod services;
@@ -40,10 +41,11 @@ async fn main() {
         .install_recorder()
         .expect("Failed to install Prometheus recorder");
 
+    let pg_repo = Arc::new(repository::PgUrlRepo(db));
     let url_state = Arc::new(models::UrlState::new(
         rabbitmq,
         redis,
-        db,
+        pg_repo,
         settings.cors_origin.clone(),
         prometheus_handle,
     ));

@@ -25,7 +25,7 @@ pub async fn health(State(state): State<UrlStateRef>) -> impl IntoResponse {
     let uptime_secs = state.started_at.elapsed().as_secs();
 
     // ── Postgres: send a trivial query ───────────────────────────────────────
-    let postgres = match sqlx::query("SELECT 1").execute(&state.db).await {
+    let postgres = match state.repo.ping().await {
         Ok(_) => Ok("ok".to_owned()),
         Err(e) => {
             tracing::warn!("health check: postgres failed: {e}");

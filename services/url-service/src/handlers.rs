@@ -50,7 +50,7 @@ pub async fn get_all_urls(
     let limit = params.limit.unwrap_or(DEFAULT_PAGE_LIMIT);
     let search = params.search.filter(|s| !s.trim().is_empty());
 
-    match url_service::get_urls_page(&state.db, claims.sub, cursor, limit, search).await {
+    match url_service::get_urls_page(&*state.repo, claims.sub, cursor, limit, search).await {
         Ok(page) => (
             StatusCode::OK,
             Json(UrlsPageResponse {
@@ -81,7 +81,13 @@ pub async fn shorten_url(
     if let Err(errors) = body.validate() {
         return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
     }
-    match url_service::shorten_url(&state.db, &body.original_url, claims.sub, body.expires_at).await
+    match url_service::shorten_url(
+        &*state.repo,
+        &body.original_url,
+        claims.sub,
+        body.expires_at,
+    )
+    .await
     {
         Ok(Some(url)) => {
             metrics::counter!("links_shortened").increment(1);
@@ -130,7 +136,7 @@ pub async fn get_original_url(
             // 2. Try DB
             tracing::info!(short_code, "cache miss");
             metrics::counter!("cache_misses").increment(1);
-            match url_service::get_original_url(&state.db, &short_code).await {
+            match url_service::get_original_url(&*state.repo, &short_code).await {
                 Ok(Some((original_url, expires_at))) => {
                     // Populate Redis
                     let ttl: u64 = if let Some(exp) = expires_at {
@@ -196,7 +202,7 @@ pub async fn delete_url_handler(
     Extension(claims): Extension<Claims>,
     Path(url_id): Path<i64>,
 ) -> impl IntoResponse {
-    match url_service::delete_url(&state.db, url_id, claims.sub).await {
+    match url_service::delete_url(&*state.repo, url_id, claims.sub).await {
         Ok(Some(short_code)) => {
             // Evict from Redis cache — non-fatal if Redis is unavailable
             let mut redis = state.redis.clone();
