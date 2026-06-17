@@ -159,3 +159,129 @@ impl UrlRepo for PgUrlRepo {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::PgPool;
+
+    async fn init_schema(pool: &PgPool) {
+        let schema = include_str!("../../../docker/postgres-urls/init/01-init.sql");
+        for statement in schema.split(';') {
+            let stmt = statement.trim();
+            if !stmt.is_empty() {
+                sqlx::query(stmt)
+                    .execute(pool)
+                    .await
+                    .expect("failed to execute schema statement");
+            }
+        }
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn test_shorten_and_get_url(pool: PgPool) {
+        init_schema(&pool).await;
+        let repo = PgUrlRepo(pool);
+        let user_id = Uuid::new_v4();
+
+        // 1. Shorten
+        let url = repo
+            .add_shorten_url("https://rust-lang.org", user_id, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(url.original_url, "https://rust-lang.org");
+        assert_eq!(url.user_id, user_id);
+        assert!(!url.short_code.is_empty());
+
+        // 2. Duplicate shorten returns Ok(None)
+        let dup = repo
+            .add_shorten_url("https://rust-lang.org", user_id, None)
+            .await
+            .unwrap();
+        assert!(dup.is_none());
+
+        // 3. Get original
+        let fetched = repo
+            .get_original_url(&url.short_code)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fetched.0, "https://rust-lang.org");
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn test_expired_reactivation(pool: PgPool) {
+        init_schema(&pool).await;
+        let repo = PgUrlRepo(pool);
+        let user_id = Uuid::new_v4();
+
+        // Create expired URL
+        let past = Utc::now() - chrono::Duration::days(1);
+        let url = repo
+            .add_shorten_url("https://reactivate.me", user_id, Some(past))
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Trying to shorten it again should reactivate it since it's expired
+        let future = Utc::now() + chrono::Duration::days(1);
+        let reactivated = repo
+            .add_shorten_url("https://reactivate.me", user_id, Some(future))
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(reactivated.url_id, url.url_id);
+        assert_eq!(
+            reactivated.expires_at.unwrap().timestamp(),
+            future.timestamp()
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn test_get_urls_page(pool: PgPool) {
+        init_schema(&pool).await;
+        let repo = PgUrlRepo(pool);
+        let user_id = Uuid::new_v4();
+
+        // Add 3 URLs
+        repo.add_shorten_url("https://a.com", user_id, None)
+            .await
+            .unwrap();
+        repo.add_shorten_url("https://b.com", user_id, None)
+            .await
+            .unwrap();
+        let last = repo
+            .add_shorten_url("https://c.com", user_id, None)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Fetch page
+        let page = repo.get_urls_page(user_id, None, 2, None).await.unwrap();
+        assert_eq!(page.urls.len(), 2);
+        assert_eq!(page.urls[0].url_id, last.url_id); // newest first
+        assert!(page.next_cursor.is_some()); // Should have 1 more remaining
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn test_delete_url(pool: PgPool) {
+        init_schema(&pool).await;
+        let repo = PgUrlRepo(pool);
+        let user_id = Uuid::new_v4();
+
+        let url = repo
+            .add_shorten_url("https://del.me", user_id, None)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let deleted_code = repo.delete_url(url.url_id, user_id).await.unwrap().unwrap();
+        assert_eq!(deleted_code, url.short_code);
+
+        // Fetching deleted URL should return None
+        let fetched = repo.get_original_url(&url.short_code).await.unwrap();
+        assert!(fetched.is_none());
+    }
+}
