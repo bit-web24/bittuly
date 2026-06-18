@@ -5,7 +5,7 @@ use axum::{
     response::Response,
 };
 use jsonwebtoken::{
-    DecodingKey, EncodingKey, Header, Validation, decode, encode, errors::ErrorKind,
+    Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode, errors::ErrorKind,
 };
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -104,10 +104,12 @@ pub fn decode_pending_token(
     token: &str,
 ) -> Result<OtpClaims, Box<dyn std::error::Error + Send + Sync>> {
     let secret = std::env::var("JWT_SECRET")?;
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.validate_exp = true;
     let data = decode::<OtpClaims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
-        &Validation::default(),
+        &validation,
     )?;
     if data.claims.token_type != PENDING_TOKEN_TYPE {
         return Err("invalid token type".into());
@@ -176,10 +178,12 @@ pub async fn jwt_auth(mut req: Request, next: Next) -> Result<Response, StatusCo
 
     let secret = std::env::var("JWT_SECRET").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.validate_exp = true;
     match decode::<Claims>(
         &access_token,
         &DecodingKey::from_secret(secret.as_bytes()),
-        &Validation::default(),
+        &validation,
     ) {
         Ok(data) if data.claims.token_type == ACCESS_TOKEN_TYPE => {
             req.extensions_mut().insert(data.claims);
@@ -201,10 +205,12 @@ async fn refresh_access_token(
 ) -> Result<Response, StatusCode> {
     let refresh_token = parse_cookie(cookie_str, COOKIE_REFRESH).ok_or(StatusCode::UNAUTHORIZED)?;
 
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.validate_exp = true;
     let data = decode::<Claims>(
         &refresh_token,
         &DecodingKey::from_secret(secret.as_bytes()),
-        &Validation::default(),
+        &validation,
     )
     .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
@@ -227,4 +233,112 @@ async fn refresh_access_token(
     set_token_cookies(&mut response, &new_access, &new_refresh)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Helper to set up the env var for tests
+    fn setup_env() {
+        unsafe {
+            std::env::set_var("JWT_SECRET", "super-secret-test-key-12345");
+        }
+    }
+
+    #[test]
+    fn test_create_and_decode_access_token() {
+        setup_env();
+        let user_id = Uuid::new_v4();
+
+        let token = create_access_token(user_id).expect("failed to create access token");
+        assert!(!token.is_empty());
+
+        let secret = std::env::var("JWT_SECRET").unwrap();
+        let decoded = decode::<Claims>(
+            &token,
+            &DecodingKey::from_secret(secret.as_bytes()),
+            &Validation::default(),
+        )
+        .expect("failed to decode token");
+
+        assert_eq!(decoded.claims.sub, user_id);
+        assert_eq!(decoded.claims.token_type, ACCESS_TOKEN_TYPE);
+    }
+
+    #[test]
+    fn test_create_and_decode_refresh_token() {
+        setup_env();
+        let user_id = Uuid::new_v4();
+
+        let token = create_refresh_token(user_id).unwrap();
+
+        let secret = std::env::var("JWT_SECRET").unwrap();
+        let decoded = decode::<Claims>(
+            &token,
+            &DecodingKey::from_secret(secret.as_bytes()),
+            &Validation::default(),
+        )
+        .unwrap();
+
+        assert_eq!(decoded.claims.sub, user_id);
+        assert_eq!(decoded.claims.token_type, REFRESH_TOKEN_TYPE);
+    }
+
+    #[test]
+    fn test_pending_token_roundtrip() {
+        setup_env();
+        let email = "test@example.com";
+        let username = "tester";
+        let pass_hash = "hashed_pass";
+        let otp_hash = "hashed_otp";
+
+        let token = create_pending_token(email, username, pass_hash, otp_hash)
+            .expect("failed to create pending token");
+
+        let claims = decode_pending_token(&token).expect("failed to decode pending token");
+
+        assert_eq!(claims.email, email);
+        assert_eq!(claims.username, username);
+        assert_eq!(claims.password_hash, pass_hash);
+        assert_eq!(claims.otp_hash, otp_hash);
+        assert_eq!(claims.token_type, PENDING_TOKEN_TYPE);
+    }
+
+    #[test]
+    fn test_decode_pending_token_rejects_access_token() {
+        setup_env();
+        let user_id = Uuid::new_v4();
+        let access_token = create_access_token(user_id).unwrap();
+
+        // Trying to decode an access token as a pending token should fail
+        let result = decode_pending_token(&access_token);
+        assert!(result.is_err(), "Should have rejected access token");
+    }
+
+    #[test]
+    fn test_parse_cookie_success() {
+        let header = "access_token=123; refresh_token=456; other=789";
+        assert_eq!(
+            parse_cookie(header, "access_token"),
+            Some("123".to_string())
+        );
+        assert_eq!(
+            parse_cookie(header, "refresh_token"),
+            Some("456".to_string())
+        );
+        assert_eq!(parse_cookie(header, "other"), Some("789".to_string()));
+    }
+
+    #[test]
+    fn test_parse_cookie_missing() {
+        let header = "access_token=123; other=789";
+        assert_eq!(parse_cookie(header, "refresh_token"), None);
+        assert_eq!(parse_cookie(header, "missing"), None);
+    }
+
+    #[test]
+    fn test_parse_cookie_empty_string() {
+        assert_eq!(parse_cookie("", "access_token"), None);
+    }
 }

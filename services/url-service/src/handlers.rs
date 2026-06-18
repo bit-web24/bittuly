@@ -50,7 +50,7 @@ pub async fn get_all_urls(
     let limit = params.limit.unwrap_or(DEFAULT_PAGE_LIMIT);
     let search = params.search.filter(|s| !s.trim().is_empty());
 
-    match url_service::get_urls_page(&state.db, claims.sub, cursor, limit, search).await {
+    match url_service::get_urls_page(&*state.repo, claims.sub, cursor, limit, search).await {
         Ok(page) => (
             StatusCode::OK,
             Json(UrlsPageResponse {
@@ -66,7 +66,7 @@ pub async fn get_all_urls(
     }
 }
 
-#[derive(Deserialize, Validate)]
+#[derive(serde::Deserialize, serde::Serialize, Validate)]
 pub struct ShortenUrlRequest {
     #[validate(url)]
     pub original_url: String,
@@ -81,9 +81,18 @@ pub async fn shorten_url(
     if let Err(errors) = body.validate() {
         return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
     }
-    match url_service::shorten_url(&state.db, &body.original_url, claims.sub, body.expires_at).await
+    match url_service::shorten_url(
+        &*state.repo,
+        &body.original_url,
+        claims.sub,
+        body.expires_at,
+    )
+    .await
     {
-        Ok(Some(url)) => (StatusCode::CREATED, Json(url)).into_response(),
+        Ok(Some(url)) => {
+            metrics::counter!("links_shortened").increment(1);
+            (StatusCode::CREATED, Json(url)).into_response()
+        }
         Ok(None) => (
             StatusCode::CONFLICT,
             Json(serde_json::json!({ "error": "You have already shortened this URL" })),
@@ -108,43 +117,52 @@ pub async fn get_original_url(
         .get_with(short_code.clone(), async {
             let mut redis = state.redis.clone();
 
-            // 1. Try Redis
-            let cached: Option<String> = match redis.get::<_, Option<String>>(&short_code).await {
-                Ok(v) => v,
-                Err(e) => {
-                    tracing::warn!("redis get failed (falling back to db): {e}");
-                    None
+            let cached: Option<String> = {
+                let span = tracing::info_span!("cache.get_url", short_code = %short_code);
+                let _guard = span.enter();
+                match redis.get::<_, Option<String>>(&short_code).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!("redis get failed (falling back to db): {e}");
+                        None
+                    }
                 }
             };
 
             if let Some(original_url) = cached {
                 tracing::info!(short_code, "cache hit");
+                metrics::counter!("cache_hits").increment(1);
                 // If it's in Redis, it's guaranteed valid because Redis handles TTL eviction natively.
                 return Some((original_url, None));
             }
 
             // 2. Try DB
             tracing::info!(short_code, "cache miss");
-            match url_service::get_original_url(&state.db, &short_code).await {
+            metrics::counter!("cache_misses").increment(1);
+            match url_service::get_original_url(&*state.repo, &short_code).await {
                 Ok(Some((original_url, expires_at))) => {
-                    // Populate Redis
-                    let ttl: u64 = if let Some(exp) = expires_at {
-                        let remaining = exp.signed_duration_since(chrono::Utc::now()).num_seconds();
-                        if remaining <= 0 {
-                            return Some((original_url, expires_at)); // Let caller handle expiration
+                    // 3. Update Redis cache in background
+                    let original_url_clone = original_url.clone();
+                    let short_code_clone = short_code.clone();
+                    tokio::spawn(async move {
+                        let span =
+                            tracing::info_span!("cache.set_url", short_code = %short_code_clone);
+                        let _guard = span.enter();
+                        if let Some(exp) = expires_at {
+                            let ttl = exp.timestamp() - chrono::Utc::now().timestamp();
+                            if ttl > 0 {
+                                let _: () = redis
+                                    .set_ex(&short_code_clone, original_url_clone, ttl as u64)
+                                    .await
+                                    .unwrap_or_default();
+                            }
+                        } else {
+                            let _: () = redis
+                                .set(&short_code_clone, original_url_clone)
+                                .await
+                                .unwrap_or_default();
                         }
-                        remaining.try_into().unwrap_or(60 * 60 * 24) // if timestamp is known, but expired, use default TTL = 24 hours
-                    } else {
-                        60 * 60 * 24 // if timestamp is unknown, use default TTL = 24 hours
-                    };
-
-                    if let Err(e) = redis
-                        .set_ex::<_, _, ()>(&short_code, &original_url, ttl)
-                        .await
-                    {
-                        tracing::warn!("redis set_ex failed: {e}");
-                    }
-
+                    });
                     Some((original_url, expires_at))
                 }
                 _ => None, // Not found or error
@@ -167,15 +185,31 @@ pub async fn get_original_url(
             if let Ok(conn) = state.rabbitmq.get().await
                 && let Ok(channel) = conn.create_channel().await
             {
+                use std::collections::HashMap;
+
+                let mut carrier = HashMap::new();
+                shared::telemetry::inject_context(&mut carrier);
+
+                let mut amqp_headers = shared::lapin::types::FieldTable::default();
+                for (k, v) in carrier {
+                    amqp_headers.insert(
+                        k.into(),
+                        shared::lapin::types::AMQPValue::LongString(v.into()),
+                    );
+                }
+                let props = shared::lapin::BasicProperties::default().with_headers(amqp_headers);
+
                 let _ = channel
                     .basic_publish(
                         "",
                         "click_events_queue",
                         shared::lapin::options::BasicPublishOptions::default(),
                         short_code.as_bytes(),
-                        shared::lapin::BasicProperties::default(),
+                        props,
                     )
                     .await;
+                metrics::counter!("rabbit_mq_events_published", "queue" => "click_events_queue")
+                    .increment(1);
             }
 
             Redirect::temporary(&original_url).into_response()
@@ -189,7 +223,7 @@ pub async fn delete_url_handler(
     Extension(claims): Extension<Claims>,
     Path(url_id): Path<i64>,
 ) -> impl IntoResponse {
-    match url_service::delete_url(&state.db, url_id, claims.sub).await {
+    match url_service::delete_url(&*state.repo, url_id, claims.sub).await {
         Ok(Some(short_code)) => {
             // Evict from Redis cache — non-fatal if Redis is unavailable
             let mut redis = state.redis.clone();
@@ -203,5 +237,132 @@ pub async fn delete_url_handler(
             tracing::error!("{:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ShortenUrlRequest;
+    use super::*;
+    use crate::mock::MockUrlRepo;
+    use crate::models::Url;
+    use crate::models::UrlState;
+    use crate::routes::url_routes;
+    use axum_test::TestServer;
+    use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+    use moka::future::Cache;
+    use shared::deadpool_lapin::{Config, Runtime};
+    use shared::jwt::Claims;
+    use std::sync::{Arc, OnceLock};
+    use std::time::Duration;
+
+    static PROMETHEUS_HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
+
+    async fn setup_app() -> TestServer {
+        unsafe {
+            std::env::set_var("JWT_SECRET", "super-secret-test-key-12345");
+            std::env::set_var("MODE", "development");
+        }
+
+        let repo = Arc::new(MockUrlRepo::new());
+        let rabbit_cfg = Config::default();
+        let rabbitmq = rabbit_cfg.create_pool(Some(Runtime::Tokio1)).unwrap();
+        let redis = shared::redis::init_redis("redis://127.0.0.1")
+            .await
+            .unwrap();
+
+        let prometheus_handle = PROMETHEUS_HANDLE
+            .get_or_init(|| {
+                PrometheusBuilder::new()
+                    .install_recorder()
+                    .expect("failed to install recorder in test")
+            })
+            .clone();
+
+        let state = Arc::new(UrlState::new(
+            rabbitmq,
+            redis,
+            repo,
+            "http://localhost:8000".to_string(),
+            prometheus_handle,
+        ));
+
+        let app = url_routes().with_state(state);
+        TestServer::new(app)
+    }
+
+    fn generate_test_token() -> String {
+        let claims = Claims {
+            sub: uuid::Uuid::new_v4(),
+            exp: (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp() as usize,
+            token_type: "access".to_string(),
+        };
+        jsonwebtoken::encode(
+            &jsonwebtoken::Header::default(),
+            &claims,
+            &jsonwebtoken::EncodingKey::from_secret("super-secret-test-key-12345".as_ref()),
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_api_shorten_url_success() {
+        let server = setup_app().await;
+        let token = generate_test_token();
+
+        let payload = ShortenUrlRequest {
+            original_url: "https://rust-lang.org".to_string(),
+            expires_at: None,
+        };
+
+        let mut res = server
+            .post("/api/urls")
+            .add_cookie(cookie::Cookie::new("access_token", token))
+            .json(&payload)
+            .await;
+
+        res.assert_status(StatusCode::CREATED);
+
+        let url = res.json::<Url>();
+        assert_eq!(url.original_url, "https://rust-lang.org");
+        assert!(!url.short_code.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_api_get_original_url() {
+        let server = setup_app().await;
+        let token = generate_test_token();
+
+        // 1. Shorten
+        let payload = ShortenUrlRequest {
+            original_url: "https://github.com".to_string(),
+            expires_at: None,
+        };
+        let mut res = server
+            .post("/api/urls")
+            .add_cookie(cookie::Cookie::new("access_token", token))
+            .json(&payload)
+            .await;
+
+        let url = res.json::<Url>();
+
+        // 2. Resolve (does not need auth)
+        let mut res_get = server.get(&format!("/{}", url.short_code)).await;
+
+        res_get.assert_status(StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(res_get.header("Location"), "https://github.com");
+    }
+
+    #[tokio::test]
+    async fn test_api_unauthorized() {
+        let server = setup_app().await;
+
+        let payload = ShortenUrlRequest {
+            original_url: "https://rust-lang.org".to_string(),
+            expires_at: None,
+        };
+
+        let mut res = server.post("/api/urls").json(&payload).await;
+        res.assert_status(StatusCode::UNAUTHORIZED);
     }
 }

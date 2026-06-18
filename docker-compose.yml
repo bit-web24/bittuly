@@ -2,8 +2,9 @@ services:
   rabbitmq:
     image: rabbitmq:4.3.1-management-alpine
     container_name: bittuly-rabbitmq
+    restart: unless-stopped
     ports:
-      - "5672:5672"   # AMQP protocol port
+      - "5672:5672" # AMQP protocol port
       - "15672:15672" # Management UI port
     environment:
       RABBITMQ_DEFAULT_USER: bittu
@@ -14,12 +15,31 @@ services:
       timeout: 5s
       retries: 5
 
+  jaeger:
+    image: jaegertracing/jaeger:2.18.0
+    container_name: bittuly-jaeger
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:16686/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api-gateway:
     image: nginx:1.31.1-alpine
     container_name: bittuly-api-gateway
+    restart: unless-stopped
     network_mode: "host" # Allows NGINX to proxy to 127.0.0.1 on the host machine
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
     depends_on:
       postgres-auth:
         condition: service_healthy
@@ -29,6 +49,7 @@ services:
   postgres-auth:
     image: postgres:17
     container_name: bittuly-postgres-auth
+    restart: unless-stopped
     environment:
       POSTGRES_USER: bittu
       POSTGRES_PASSWORD: bittu
@@ -47,6 +68,7 @@ services:
   postgres-urls:
     image: postgres:17
     container_name: bittuly-postgres-urls
+    restart: unless-stopped
     environment:
       POSTGRES_USER: bittu
       POSTGRES_PASSWORD: bittu
@@ -65,6 +87,7 @@ services:
   redis:
     image: redis:8.2.7-bookworm
     container_name: bittuly-redis
+    restart: unless-stopped
     command: >
       redis-server
       --loglevel warning
@@ -77,6 +100,26 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  prometheus:
+    image: prom/prometheus:v3-distroless
+    container_name: bittuly-prometheus
+    restart: unless-stopped
+    network_mode: "host"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:11.6
+    container_name: bittuly-grafana
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+
+
 
 volumes:
   bittuly-pg-auth-data:

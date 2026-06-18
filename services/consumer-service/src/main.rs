@@ -11,7 +11,7 @@ use shared::redis as shared_redis;
 use std::collections::HashMap;
 use std::env;
 use tokio::time::{Duration, interval};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
 use uuid::Uuid;
 
 #[derive(Deserialize, Debug)]
@@ -23,13 +23,7 @@ struct UserDeletedEvent {
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenvy::dotenv().ok();
 
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "consumer_service=info,shared=info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    shared::telemetry::init_tracing("consumer-service");
 
     let db_url = env::var("URL_DATABASE_URL").expect("URL_DATABASE_URL must be set");
     let redis_url = env::var("REDIS_URL").expect("REDIS_URL must be set");
@@ -102,10 +96,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .next()
         .unwrap_or("127.0.0.1:5672");
 
-    println!("Consumer service listening on {}", addr_port);
-    tracing::info!("Consumer service started and connected to RabbitMQ.");
+    tracing::info!(
+        "Consumer service started, connected to RabbitMQ at {}.",
+        addr_port
+    );
 
-    // ─── Task 1: Click Events Consumer ───────────────────────────────────────
+    // Click Events Consumer
     let click_db = db.clone();
     let click_channel = rabbit_conn.create_channel().await?;
     let mut click_consumer = click_channel
@@ -137,6 +133,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             last_delivery_tag = Some(delivery.delivery_tag);
 
                             if total_clicks >= 17 {
+                                let span = tracing::info_span!("process_click_batch", batch_size = total_clicks, unique_urls = batch.len());
+                                let _guard = span.enter();
+
                                 match increment_click_counts(&click_db, &batch).await {
                                     Ok(_) => {
                                         let unique_urls: Vec<_> = batch.keys().cloned().collect();
@@ -150,6 +149,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                         if let Some(tag) = last_delivery_tag.take() {
                                             let _ = click_channel.basic_ack(tag, lapin::options::BasicAckOptions { multiple: true }).await;
                                         }
+                                        // Only clear after successful flush
+                                        batch.clear();
+                                        total_clicks = 0;
                                     }
                                     Err(e) => {
                                         let delay = 3_u64.pow(consecutive_failures.min(2) + 1);
@@ -159,15 +161,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                         if let Some(tag) = last_delivery_tag.take() {
                                             let _ = click_channel.basic_nack(tag, lapin::options::BasicNackOptions { multiple: true, requeue: true }).await;
                                         }
+                                        // Do NOT clear batch on failure — messages are requeued and will be redelivered.
                                     }
                                 }
-                                batch.clear();
-                                total_clicks = 0;
                         }
                     }
                 }
                 _ = flush_interval.tick() => {
                     if !batch.is_empty() {
+                        let span = tracing::info_span!("process_click_batch", batch_size = total_clicks, unique_urls = batch.len());
+                        let _guard = span.enter();
+
                         match increment_click_counts(&click_db, &batch).await {
                             Ok(_) => {
                                 let unique_urls: Vec<_> = batch.keys().cloned().collect();
@@ -181,6 +185,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 if let Some(tag) = last_delivery_tag.take() {
                                     let _ = click_channel.basic_ack(tag, lapin::options::BasicAckOptions { multiple: true }).await;
                                 }
+                                // Only clear after successful flush
+                                batch.clear();
+                                total_clicks = 0;
                             }
                             Err(e) => {
                                 let delay = 3_u64.pow(consecutive_failures.min(2) + 1);
@@ -190,17 +197,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 if let Some(tag) = last_delivery_tag.take() {
                                     let _ = click_channel.basic_nack(tag, lapin::options::BasicNackOptions { multiple: true, requeue: true }).await;
                                 }
+                                // Do NOT clear batch on failure — messages are requeued and will be redelivered.
                             }
                         }
-                        batch.clear();
-                        total_clicks = 0;
                     }
                 }
             }
         }
     });
 
-    // ─── Task 2: User Deleted Events Consumer ────────────────────────────────
+    // User Deleted Events Consumer
     let user_db = db.clone();
     let user_channel = rabbit_conn.create_channel().await?;
     let mut user_consumer = user_channel
@@ -215,6 +221,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tokio::spawn(async move {
         while let Some(Ok(delivery)) = user_consumer.next().await {
             if let Ok(event) = serde_json::from_slice::<UserDeletedEvent>(&delivery.data) {
+                use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+                let carrier: HashMap<String, String> = delivery
+                    .properties
+                    .headers()
+                    .as_ref()
+                    .map(|h| {
+                        h.inner()
+                            .iter()
+                            .filter_map(|(k, v)| {
+                                if let lapin::types::AMQPValue::LongString(s) = v {
+                                    Some((k.as_str().to_string(), s.to_string()))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                let parent_cx = shared::telemetry::extract_context(&carrier);
+
+                let span =
+                    tracing::info_span!("process_user_deleted_event", user_id = %event.user_id);
+                let _ = span.set_parent(parent_cx);
+                let _guard = span.enter();
+
                 tracing::info!(
                     "🗑️  [USER DELETED] Received cleanup event for user_id: {}",
                     event.user_id
@@ -312,8 +345,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     });
 
-    // Block forever so that the services (click consumer and user deletion consumer) keeps running
-    std::future::pending::<()>().await;
+    // Block until a shutdown signal is received
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Failed to listen for ctrl_c");
+
+    tracing::info!("Shutdown signal received, flushing traces and exiting.");
+    shared::telemetry::shutdown_tracing();
     Ok(())
 }
 

@@ -449,7 +449,7 @@ Each service exposes `GET /metrics` using the `metrics` + `metrics-exporter-prom
 | JWT validation | NGINX `auth_request` → `auth-service /api/auth/validate` |
 | Rate limiting — redirects | 20 req/s per IP |
 | Rate limiting — shorten | 10 req/min per user (X-User-Id key) |
-| URL safety | Google Safe Browsing API v4, checked before every INSERT |
+| URL safety | Google Safe Browsing API v5 / Web Risk, checked before every INSERT |
 | Secrets | Kubernetes Secrets + Sealed Secrets operator (safe to git-commit) |
 | Network policy | Deny-all default, allow-list per service |
 | Container hardening | `runAsNonRoot`, read-only root filesystem, `allowPrivilegeEscalation: false` |
@@ -557,10 +557,10 @@ Each service exposes `GET /metrics` using the `metrics` + `metrics-exporter-prom
 
 ---
 
-### Phase 4 — URL Safety Check
+### ⏭️ Phase 4 — URL Safety Check (DEFERRED)
 **Goal:** Prevent shortening of phishing / malware URLs.
 
-- [ ] Google Safe Browsing API v4 integration (free, 10k queries/day)
+- [ ] Google Safe Browsing API v5 (or Google Web Risk) integration
 - [ ] Called synchronously in `shorten_url` service, before DB write
 - [ ] 422 Unprocessable Entity + `{ "error": "URL flagged as unsafe" }` if matched
 - [ ] Fail-open: if Safe Browsing API is unreachable, log warning + allow request
@@ -568,26 +568,26 @@ Each service exposes `GET /metrics` using the `metrics` + `metrics-exporter-prom
 
 ---
 
-### Phase 5 — Metrics Instrumentation
+### ✅ Phase 5 — Metrics Instrumentation
 **Goal:** Full Prometheus metrics from both services.
 
-- [ ] Add `metrics` + `metrics-exporter-prometheus` crates to both services via shared
-- [ ] Instrument all HTTP handlers (counter + histogram)
-- [ ] Instrument cache hit/miss, batch flush trigger, RabbitMQ publish/consume
-- [ ] `GET /metrics` on both services (internal port only, not exposed via ingress)
-- [ ] Add Prometheus + Grafana to Docker Compose for local development
-- [ ] Build the 4 dashboards listed in Section 9
+- [x] Add `metrics` + `metrics-exporter-prometheus` crates to both services via shared
+- [x] Instrument all HTTP handlers (counter + histogram)
+- [x] Instrument cache hit/miss, batch flush trigger, RabbitMQ publish/consume
+- [x] `GET /metrics` on both services (internal port only, not exposed via ingress)
+- [x] Add Prometheus + Grafana to Docker Compose for local development
+- [x] Build the 4 dashboards listed in Section 9
 
 ---
 
-### Phase 6 — Distributed Tracing
+### ✅ Phase 6 — Distributed Tracing
 **Goal:** End-to-end trace correlation across services.
 
-- [ ] Add `opentelemetry`, `tracing-opentelemetry`, `opentelemetry-otlp` to shared
-- [ ] `init_telemetry()` in shared crate, called by both service `main.rs`
-- [ ] Propagate `traceparent` W3C header through NGINX → services
-- [ ] DB queries and Redis calls wrapped as child spans
-- [ ] Jaeger in Docker Compose (UI on :16686)
+- [x] Add `opentelemetry`, `tracing-opentelemetry`, `opentelemetry-otlp` to shared
+- [x] `init_telemetry()` in shared crate, called by both service `main.rs`
+- [x] Propagate `traceparent` W3C header through NGINX → services
+- [x] DB queries and Redis calls wrapped as child spans
+- [x] Jaeger in Docker Compose (UI on :16686)
 
 ---
 
@@ -709,4 +709,4 @@ open http://localhost:16686    # Jaeger
 ---
 
 *Document created: 2026-06-13*
-*Current status: Phase 3 — URL Expiration — IN PROGRESS*
+*Current status: Phase 7 — Kubernetes Manifests — IN PROGRESS*

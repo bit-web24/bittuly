@@ -1,14 +1,17 @@
 use deadpool_lapin::{Config, Pool, Runtime};
 
-pub async fn init_rabbitmq_pool(amqp_url: &str) -> Pool {
+/// Initialize a RabbitMQ connection pool and pre-declare all required queues.
+///
+/// Returns an error if the pool cannot be created (invalid URL / config).
+/// Queue declaration failures are logged as warnings and are non-fatal —
+/// queues must already exist on the broker, or will be declared lazily.
+pub async fn init_rabbitmq_pool(amqp_url: &str) -> Result<Pool, deadpool_lapin::CreatePoolError> {
     let cfg = Config {
         url: Some(amqp_url.to_string()),
         ..Default::default()
     };
 
-    let pool = cfg
-        .create_pool(Some(Runtime::Tokio1))
-        .expect("Failed to create RabbitMQ pool");
+    let pool = cfg.create_pool(Some(Runtime::Tokio1))?;
 
     if let Ok(conn) = pool.get().await
         && let Ok(channel) = conn.create_channel().await
@@ -18,13 +21,21 @@ pub async fn init_rabbitmq_pool(amqp_url: &str) -> Pool {
             ..Default::default()
         };
 
-        let _ = channel
-            .queue_declare(
-                "user_deleted_dlq",
-                options,
-                lapin::types::FieldTable::default(),
-            )
-            .await;
+        let queues = [
+            ("user_deleted_dlq", lapin::types::FieldTable::default()),
+            ("user_deleted_queue", lapin::types::FieldTable::default()),
+            ("click_events_queue", lapin::types::FieldTable::default()),
+        ];
+
+        for (name, args) in queues {
+            if let Err(e) = channel.queue_declare(name, options, args).await {
+                tracing::warn!(
+                    "Failed to pre-declare queue '{}': {}. It may already exist or be declared lazily.",
+                    name,
+                    e
+                );
+            }
+        }
 
         for delay in [3, 9, 27] {
             let mut retry_args = lapin::types::FieldTable::default();
@@ -41,33 +52,26 @@ pub async fn init_rabbitmq_pool(amqp_url: &str) -> Pool {
                 lapin::types::AMQPValue::LongString("user_deleted_queue".into()),
             );
 
-            let _ = channel
+            let queue_name = format!("user_deleted_retry_{}s", delay);
+            if let Err(e) = channel
                 .queue_declare(
-                    &format!("user_deleted_retry_{}s", delay),
+                    &queue_name,
                     lapin::options::QueueDeclareOptions {
                         durable: true,
                         ..Default::default()
                     },
                     retry_args,
                 )
-                .await;
+                .await
+            {
+                tracing::warn!("Failed to pre-declare retry queue '{}': {}", queue_name, e);
+            }
         }
-
-        let _ = channel
-            .queue_declare(
-                "user_deleted_queue",
-                options,
-                lapin::types::FieldTable::default(),
-            )
-            .await;
-        let _ = channel
-            .queue_declare(
-                "click_events_queue",
-                options,
-                lapin::types::FieldTable::default(),
-            )
-            .await;
+    } else {
+        tracing::warn!(
+            "RabbitMQ pool created but could not pre-declare queues on startup. Will retry lazily."
+        );
     }
 
-    pool
+    Ok(pool)
 }
