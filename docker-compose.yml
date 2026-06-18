@@ -15,6 +15,19 @@ services:
       timeout: 5s
       retries: 5
 
+  jaeger:
+    image: jaegertracing/jaeger:2.18.0
+    container_name: bittuly-jaeger
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:16686/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api-gateway:
     image: nginx:1.31.1-alpine
     container_name: bittuly-api-gateway
@@ -105,6 +118,8 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     volumes:
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+
+
 
 volumes:
   bittuly-pg-auth-data:

@@ -161,13 +161,28 @@ pub async fn delete_user(
             if let Ok(conn) = state.rabbitmq.get().await
                 && let Ok(channel) = conn.create_channel().await
             {
+                use std::collections::HashMap;
+
+                let mut carrier = HashMap::new();
+                shared::telemetry::inject_context(&mut carrier);
+
+                // Convert carrier to AMQP headers
+                let mut amqp_headers = shared::lapin::types::FieldTable::default();
+                for (k, v) in carrier {
+                    amqp_headers.insert(
+                        k.into(),
+                        shared::lapin::types::AMQPValue::LongString(v.into()),
+                    );
+                }
+                let props = shared::lapin::BasicProperties::default().with_headers(amqp_headers);
+
                 let _ = channel
                     .basic_publish(
                         "", // default exchange
                         "user_deleted_queue",
                         shared::lapin::options::BasicPublishOptions::default(),
                         payload.as_bytes(),
-                        shared::lapin::BasicProperties::default(),
+                        props,
                     )
                     .await;
             }

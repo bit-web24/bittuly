@@ -97,7 +97,7 @@ Your frontend is now available via the NGINX API Gateway at `http://localhost:80
 
 ## 📊 API Gateway & Monitoring Stack
 
-Bittuly is fully instrumented with Prometheus and Grafana for real-time traffic observability.
+Bittuly is fully instrumented with OpenTelemetry, Prometheus, and Grafana for real-time traffic observability and distributed tracing.
 
 ### 1. NGINX API Gateway (Port 8000)
 The API gateway serves as the main entry point to the system, handling CORS, proxying, and caching interceptions.
@@ -116,6 +116,11 @@ Grafana visualizes the telemetry data collected by Prometheus.
 - **UI Endpoint**: `http://localhost:3000`
 - **Default Login**: `admin` / `admin`
 - **Dashboards**: Grafana is pre-provisioned with the "Bittuly Live Traffic" dashboard, featuring RPS, Latency, Cache Hits/Misses, and Business Metrics.
+
+### 4. Jaeger / OpenTelemetry (Port 16686)
+Jaeger collects and visualizes distributed traces using the OpenTelemetry Protocol (OTLP).
+- **UI Endpoint**: `http://localhost:16686`
+- **OTLP Receiver**: `http://localhost:4317` (Internal)
 
 ---
 

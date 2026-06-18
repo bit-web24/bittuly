@@ -14,19 +14,14 @@ use shared::config;
 use shared::postgres;
 use shared::redis;
 use std::sync::Arc;
+use tower::Layer;
 use tower_http::cors::CorsLayer;
+use tower_http::normalize_path::NormalizePathLayer;
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "tower_http=debug,url_service=debug,shared=debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    shared::telemetry::init_tracing("url-service");
 
     let settings = config::UrlConfig::from_env().expect("Failed to load setting from environment");
     let db = postgres::init_pg_pool(&settings.database_url)
@@ -73,7 +68,11 @@ async fn main() {
         ])
         .allow_credentials(true);
 
+    use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
+
     let app = routes::url_routes()
+        .layer(OtelInResponseLayer) // adds trace-id to response headers
+        .layer(OtelAxumLayer::default()) // extracts W3C traceparent from request
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(url_state);
@@ -91,7 +90,43 @@ async fn main() {
         settings.cors_origin
     );
 
-    if let Err(err) = axum::serve(listener, app).await {
-        eprintln!("server error: {err}");
+    // NormalizePathLayer strips trailing slashes so /api/urls/ matches /api/urls
+    let app = NormalizePathLayer::trim_trailing_slash().layer(app);
+    let app: axum::routing::IntoMakeService<_> =
+        axum::ServiceExt::<axum::extract::Request>::into_make_service(app);
+
+    let server = axum::serve(listener, app);
+    let graceful = server.with_graceful_shutdown(shutdown_signal());
+
+    if let Err(err) = graceful.await {
+        tracing::error!("server error: {err}");
     }
+
+    // Ensure all traces are flushed before exiting
+    shared::telemetry::shutdown_tracing();
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    tracing::info!("Shutdown signal received, starting graceful shutdown");
 }

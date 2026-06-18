@@ -117,12 +117,15 @@ pub async fn get_original_url(
         .get_with(short_code.clone(), async {
             let mut redis = state.redis.clone();
 
-            // 1. Try Redis
-            let cached: Option<String> = match redis.get::<_, Option<String>>(&short_code).await {
-                Ok(v) => v,
-                Err(e) => {
-                    tracing::warn!("redis get failed (falling back to db): {e}");
-                    None
+            let cached: Option<String> = {
+                let span = tracing::info_span!("cache.get_url", short_code = %short_code);
+                let _guard = span.enter();
+                match redis.get::<_, Option<String>>(&short_code).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!("redis get failed (falling back to db): {e}");
+                        None
+                    }
                 }
             };
 
@@ -138,24 +141,28 @@ pub async fn get_original_url(
             metrics::counter!("cache_misses").increment(1);
             match url_service::get_original_url(&*state.repo, &short_code).await {
                 Ok(Some((original_url, expires_at))) => {
-                    // Populate Redis
-                    let ttl: u64 = if let Some(exp) = expires_at {
-                        let remaining = exp.signed_duration_since(chrono::Utc::now()).num_seconds();
-                        if remaining <= 0 {
-                            return Some((original_url, expires_at)); // Let caller handle expiration
+                    // 3. Update Redis cache in background
+                    let original_url_clone = original_url.clone();
+                    let short_code_clone = short_code.clone();
+                    tokio::spawn(async move {
+                        let span =
+                            tracing::info_span!("cache.set_url", short_code = %short_code_clone);
+                        let _guard = span.enter();
+                        if let Some(exp) = expires_at {
+                            let ttl = exp.timestamp() - chrono::Utc::now().timestamp();
+                            if ttl > 0 {
+                                let _: () = redis
+                                    .set_ex(&short_code_clone, original_url_clone, ttl as u64)
+                                    .await
+                                    .unwrap_or_default();
+                            }
+                        } else {
+                            let _: () = redis
+                                .set(&short_code_clone, original_url_clone)
+                                .await
+                                .unwrap_or_default();
                         }
-                        remaining.try_into().unwrap_or(60 * 60 * 24) // if timestamp is known, but expired, use default TTL = 24 hours
-                    } else {
-                        60 * 60 * 24 // if timestamp is unknown, use default TTL = 24 hours
-                    };
-
-                    if let Err(e) = redis
-                        .set_ex::<_, _, ()>(&short_code, &original_url, ttl)
-                        .await
-                    {
-                        tracing::warn!("redis set_ex failed: {e}");
-                    }
-
+                    });
                     Some((original_url, expires_at))
                 }
                 _ => None, // Not found or error
@@ -178,13 +185,27 @@ pub async fn get_original_url(
             if let Ok(conn) = state.rabbitmq.get().await
                 && let Ok(channel) = conn.create_channel().await
             {
+                use std::collections::HashMap;
+
+                let mut carrier = HashMap::new();
+                shared::telemetry::inject_context(&mut carrier);
+
+                let mut amqp_headers = shared::lapin::types::FieldTable::default();
+                for (k, v) in carrier {
+                    amqp_headers.insert(
+                        k.into(),
+                        shared::lapin::types::AMQPValue::LongString(v.into()),
+                    );
+                }
+                let props = shared::lapin::BasicProperties::default().with_headers(amqp_headers);
+
                 let _ = channel
                     .basic_publish(
                         "",
                         "click_events_queue",
                         shared::lapin::options::BasicPublishOptions::default(),
                         short_code.as_bytes(),
-                        shared::lapin::BasicProperties::default(),
+                        props,
                     )
                     .await;
                 metrics::counter!("rabbit_mq_events_published", "queue" => "click_events_queue")
