@@ -3,10 +3,13 @@ dev-auth     = ["watch", "-c", "-w", "services/auth-service",     "-w", "libs/sh
 dev-urls     = ["watch", "-c", "-w", "services/url-service",      "-w", "libs/shared", "-x", "run -p url-service"]
 dev-consumer = ["watch", "-c", "-w", "services/consumer-service", "-w", "libs/shared", "-x", "run -p consumer-service"]
 
-# Run only auth tests (repository tests hit postgres-auth on :5432)
+# Run tests with correct DATABASE_URL per service
 test-auth = ["test", "-p", "auth-service"]
-# Run only url tests (repository tests hit postgres-urls on :5433)
 test-urls = ["test", "-p", "url-service"]
+
+# Kubernetes cluster lifecycle (mirrors docker compose up/down)
+# Usage: cargo k8s up | start | stop | down | purge | deploy | status
+k8s = ["run", "--manifest-path", "/dev/null", "--"]
 
 [env]
 # Default DATABASE_URL used by `#[sqlx::test]` in auth-service.
