@@ -1,0 +1,137 @@
+name: Bittuly CD
+
+on:
+  push:
+    branches: ["main"]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  # ── Build & push all Docker images to GHCR ───────────────────────────────
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Generate image tag from git SHA (short) + branch
+      - name: Generate image tag
+        id: meta
+        run: echo "version=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push auth-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/auth-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/bittuly-auth-service:${{ steps.meta.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}/bittuly-auth-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push url-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/url-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/bittuly-url-service:${{ steps.meta.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}/bittuly-url-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push consumer-service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/consumer-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/bittuly-consumer-service:${{ steps.meta.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}/bittuly-consumer-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push frontend-service
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          file: web/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/bittuly-frontend-service:${{ steps.meta.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}/bittuly-frontend-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Update k8s manifests with new image tags ─────────────────────────────
+  # Uncomment and configure when you have a production cluster.
+  # deploy:
+  #   name: Deploy to Production
+  #   runs-on: ubuntu-latest
+  #   needs: build-and-push
+  #   environment: production          # requires manual approval in GitHub UI
+  #
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     # Option A: Direct kubectl (simple, for single cluster)
+  #     - name: Set up kubectl
+  #       uses: azure/setup-kubectl@v4
+  #
+  #     - name: Configure kubeconfig
+  #       run: echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+  #
+  #     - name: Update image tags in manifests
+  #       run: |
+  #         TAG=${{ needs.build-and-push.outputs.image-tag }}
+  #         REGISTRY=${{ env.IMAGE_PREFIX }}
+  #         kubectl set image deployment/auth-service \
+  #           auth-service=${REGISTRY}/bittuly-auth-service:${TAG} -n bittuly
+  #         kubectl set image deployment/url-service \
+  #           url-service=${REGISTRY}/bittuly-url-service:${TAG} -n bittuly
+  #         kubectl set image deployment/consumer-service \
+  #           consumer-service=${REGISTRY}/bittuly-consumer-service:${TAG} -n bittuly
+  #         kubectl set image deployment/frontend-service \
+  #           frontend-service=${REGISTRY}/bittuly-frontend-service:${TAG} -n bittuly
+  #
+  #     - name: Wait for rollout
+  #       run: |
+  #         kubectl rollout status deployment/auth-service     -n bittuly --timeout=120s
+  #         kubectl rollout status deployment/url-service      -n bittuly --timeout=120s
+  #         kubectl rollout status deployment/consumer-service -n bittuly --timeout=120s
+  #         kubectl rollout status deployment/frontend-service -n bittuly --timeout=120s
+  #
+  #     # Option B: ArgoCD (GitOps — recommended for production)
+  #     # Update image tag in the manifest file, commit, ArgoCD auto-syncs.
+  #     # - name: Update manifest image tag
+  #     #   run: |
+  #     #     TAG=${{ needs.build-and-push.outputs.image-tag }}
+  #     #     sed -i "s|image: .*bittuly-auth-service:.*|image: ${{ env.IMAGE_PREFIX }}/bittuly-auth-service:${TAG}|" \
+  #     #       k8s/base/auth-service/auth-service.yaml
+  #     #     git config user.name  "github-actions[bot]"
+  #     #     git config user.email "github-actions[bot]@users.noreply.github.com"
+  #     #     git commit -am "chore(cd): bump images to ${TAG}"
+  #     #     git push
