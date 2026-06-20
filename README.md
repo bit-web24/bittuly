@@ -167,3 +167,49 @@ This hook runs the full check script before pushing code to GitHub. If tests or 
 cp scripts/check.sh .git/hooks/pre-push
 chmod +x .git/hooks/pre-push
 ```
+
+---
+
+## ⚓ Kubernetes Local Deployment
+
+Bittuly is fully containerized and includes Kubernetes manifests to run an exact replica of the production environment locally using `kind` (Kubernetes in Docker).
+
+### Prerequisites
+- Docker
+- `kind` CLI
+- `kubectl` CLI
+
+### 1. Deploy the Cluster
+We have provided a convenient bash script that will automatically provision a local K8s cluster, build the Docker images (frontend, auth, url, and consumer), load them into the cluster, and apply all K8s base manifests including NGINX Ingress and metrics:
+
+```bash
+./scripts/deploy-local.sh
+```
+
+### 2. Access the Application
+The NGINX Ingress Controller automatically maps port `8000` from your localhost into the cluster.
+
+- **Frontend App**: `http://localhost:8000/`
+- **Auth API**: `http://localhost:8000/api/auth`
+- **URLs API**: `http://localhost:8000/api/urls`
+
+### 3. Access Internal Observability UI's
+Internal K8s services are not exposed to the public internet (or localhost directly). You must use `kubectl port-forward` to securely access them:
+
+**RabbitMQ Management UI:**
+```bash
+kubectl port-forward -n bittuly svc/rabbitmq 15672:15672
+# Open http://localhost:15672 (guest/guest or bittu/bittu depending on config)
+```
+
+**Jaeger Distributed Tracing UI:**
+```bash
+kubectl port-forward -n bittuly svc/jaeger 16686:16686
+# Open http://localhost:16686
+```
+
+### 4. Teardown
+To destroy the local cluster and free up resources:
+```bash
+kind delete cluster --name bittuly-local
+```

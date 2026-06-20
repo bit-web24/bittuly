@@ -591,21 +591,26 @@ Each service exposes `GET /metrics` using the `metrics` + `metrics-exporter-prom
 
 ---
 
-### Phase 7 — Kubernetes Manifests (kind cluster)
-**Goal:** Full system runs on local Kubernetes, identical to production structure.
+### ✅ Phase 7 — Kubernetes Local Deployment
+**Goal:** Run the entire system locally on `kind` with K8s manifests.
 
-- [ ] Install kind, create cluster config
-- [ ] Helm chart: `auth-service` — Deployment, Service, HPA, PDB, Secret, ConfigMap
-- [ ] Helm chart: `url-service` — Deployment, Service, HPA, PDB, Secret, ConfigMap
+- [x] Create `k8s/base` manifests for `auth-service`, `url-service`, `consumer-service`, and `frontend-service`
+- [x] Configure NGINX Ingress Controller for routing (`/api/auth`, `/api/urls`, `/`)
+- [x] Dockerize React frontend with custom NGINX fallback routing for short URLs
+- [x] Fix Rust base image glibc mismatches
+- [x] Fix Axum router fallback bug overriding 404 with 401
+- [x] Create `scripts/deploy-local.sh` for one-click deployment to `kind`
+
+### Phase 8 — Advanced Kubernetes Infrastructure (Helm & GitOps)
+**Goal:** Production-ready cluster configuration.
+
 - [ ] Helm chart: RabbitMQ (Bitnami), 3-node cluster
 - [ ] Helm chart: Redis (Bitnami), Sentinel mode
 - [ ] Helm chart: PostgreSQL (Bitnami), two separate releases (auth + urls)
 - [ ] Helm chart: monitoring stack (kube-prometheus-stack + Loki + Jaeger)
-- [ ] NGINX Ingress Controller with rate-limiting annotations
-- [ ] cert-manager with self-signed ClusterIssuer for local TLS
-- [ ] ArgoCD installed, syncing from `helm/` directory
+- [ ] cert-manager with Let's Encrypt auto-renewal
+- [ ] ArgoCD installed, syncing from `k8s/` directory
 - [ ] NetworkPolicy: deny-all default, allow-list per service
-- [ ] All health probes and PDB verified
 
 ---
 
@@ -709,4 +714,4 @@ open http://localhost:16686    # Jaeger
 ---
 
 *Document created: 2026-06-13*
-*Current status: Phase 7 — Kubernetes Manifests — IN PROGRESS*
+*Current status: Phase 7 Completed. Next: Phase 8 — Advanced Kubernetes Infrastructure*

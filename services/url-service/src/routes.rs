@@ -23,5 +23,6 @@ pub fn url_routes() -> Router<UrlStateRef> {
         .route("/api/urls/health", get(health))
         .route("/api/urls/metrics", get(metrics))
         .route("/{id}", get(get_original_url))
+        .fallback(|| async { axum::http::StatusCode::NOT_FOUND })
         .layer(axum::middleware::from_fn(shared::metrics::track_metrics))
 }
