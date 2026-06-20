@@ -160,9 +160,6 @@ mod tests {
     use super::*;
     use crate::mock::MockUserRepo;
     use crate::otp_store;
-    use async_trait::async_trait;
-    use std::collections::HashMap;
-    use std::sync::RwLock;
 
     // Helper to setup env vars
     fn setup_env() {

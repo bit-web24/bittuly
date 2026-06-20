@@ -37,13 +37,13 @@ impl UrlRepo for MockUrlRepo {
             .values()
             .find(|u| u.original_url == original_url && u.user_id == user_id)
         {
-            if let Some(exp) = existing.expires_at {
-                if exp < Utc::now() {
-                    let mut updated = existing.clone();
-                    updated.expires_at = expires_at;
-                    urls.insert(updated.url_id, updated.clone());
-                    return Ok(Some(updated));
-                }
+            if let Some(exp) = existing.expires_at
+                && exp < Utc::now()
+            {
+                let mut updated = existing.clone();
+                updated.expires_at = expires_at;
+                urls.insert(updated.url_id, updated.clone());
+                return Ok(Some(updated));
             }
             return Ok(None);
         }
@@ -116,12 +116,12 @@ impl UrlRepo for MockUrlRepo {
 
     async fn delete_url(&self, url_id: i64, user_id: Uuid) -> Result<Option<String>, sqlx::Error> {
         let mut urls = self.urls.write().unwrap();
-        if let Some(url) = urls.get(&url_id) {
-            if url.user_id == user_id {
-                let code = url.short_code.clone();
-                urls.remove(&url_id);
-                return Ok(Some(code));
-            }
+        if let Some(url) = urls.get(&url_id)
+            && url.user_id == user_id
+        {
+            let code = url.short_code.clone();
+            urls.remove(&url_id);
+            return Ok(Some(code));
         }
         Ok(None)
     }

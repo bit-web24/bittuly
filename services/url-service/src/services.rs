@@ -41,7 +41,7 @@ pub async fn delete_url(
 mod tests {
     use super::*;
     use crate::mock::MockUrlRepo;
-    use chrono::{DateTime, Utc};
+    use chrono::Utc;
     use uuid::Uuid;
 
     #[tokio::test]

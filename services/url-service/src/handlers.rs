@@ -250,11 +250,9 @@ mod tests {
     use crate::routes::url_routes;
     use axum_test::TestServer;
     use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
-    use moka::future::Cache;
     use shared::deadpool_lapin::{Config, Runtime};
     use shared::jwt::Claims;
     use std::sync::{Arc, OnceLock};
-    use std::time::Duration;
 
     static PROMETHEUS_HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
 
@@ -315,7 +313,7 @@ mod tests {
             expires_at: None,
         };
 
-        let mut res = server
+        let res = server
             .post("/api/urls")
             .add_cookie(cookie::Cookie::new("access_token", token))
             .json(&payload)
@@ -338,7 +336,7 @@ mod tests {
             original_url: "https://github.com".to_string(),
             expires_at: None,
         };
-        let mut res = server
+        let res = server
             .post("/api/urls")
             .add_cookie(cookie::Cookie::new("access_token", token))
             .json(&payload)
@@ -347,7 +345,7 @@ mod tests {
         let url = res.json::<Url>();
 
         // 2. Resolve (does not need auth)
-        let mut res_get = server.get(&format!("/{}", url.short_code)).await;
+        let res_get = server.get(&format!("/{}", url.short_code)).await;
 
         res_get.assert_status(StatusCode::TEMPORARY_REDIRECT);
         assert_eq!(res_get.header("Location"), "https://github.com");
@@ -362,7 +360,7 @@ mod tests {
             expires_at: None,
         };
 
-        let mut res = server.post("/api/urls").json(&payload).await;
+        let res = server.post("/api/urls").json(&payload).await;
         res.assert_status(StatusCode::UNAUTHORIZED);
     }
 }
