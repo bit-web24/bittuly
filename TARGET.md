@@ -614,13 +614,13 @@ Each service exposes `GET /metrics` using the `metrics` + `metrics-exporter-prom
 
 ---
 
-### Phase 8 — CI/CD Pipeline
+### ✅ Phase 8 — CI/CD Pipeline
 **Goal:** Every PR is tested; every merge to main deploys automatically.
 
-- [ ] `.github/workflows/ci.yml`: fmt, clippy, audit, test, docker build
-- [ ] `.github/workflows/cd.yml`: build images, push to GHCR, update Helm values, ArgoCD sync
-- [ ] Branch protection on `main`: require CI green
-- [ ] Semantic release: `git tag v1.x.x` triggers GitHub Release with changelog
+- [x] `.github/workflows/ci.yml`: fmt, clippy, audit, test, docker build
+- [x] `.github/workflows/cd.yml`: build images, push to GHCR, update Helm values, ArgoCD sync
+- [x] Branch protection on `main`: require CI green
+- [x] Semantic release: `git tag v1.x.x` triggers GitHub Release with changelog
 
 ---
 
@@ -714,4 +714,4 @@ open http://localhost:16686    # Jaeger
 ---
 
 *Document created: 2026-06-13*
-*Current status: Phase 7 Completed. Next: Phase 8 — Advanced Kubernetes Infrastructure*
+*Current status: Phase 8 Completed. Next: Phase 9 — Production Deployment (DOKS)*
