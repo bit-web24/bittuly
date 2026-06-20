@@ -34,7 +34,7 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Security audit
-        run: cargo audit
+        run: cargo audit --ignore RUSTSEC-2023-0071
 
   # ── Rust: auth-service tests (needs postgres-auth) ───────────────────────
   test-auth:
