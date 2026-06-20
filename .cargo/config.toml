@@ -1,8 +1,15 @@
 [alias]
-dev-auth = ["watch", "-c", "-w", "services/auth-service", "-w", "libs/shared", "-x", "run -p auth-service"]
-dev-urls = ["watch", "-c", "-w", "services/url-service", "-w", "libs/shared", "-x", "run -p url-service"]
+dev-auth     = ["watch", "-c", "-w", "services/auth-service",     "-w", "libs/shared", "-x", "run -p auth-service"]
+dev-urls     = ["watch", "-c", "-w", "services/url-service",      "-w", "libs/shared", "-x", "run -p url-service"]
 dev-consumer = ["watch", "-c", "-w", "services/consumer-service", "-w", "libs/shared", "-x", "run -p consumer-service"]
 
+# Run only auth tests (repository tests hit postgres-auth on :5432)
+test-auth = ["test", "-p", "auth-service"]
+# Run only url tests (repository tests hit postgres-urls on :5433)
+test-urls = ["test", "-p", "url-service"]
+
 [env]
-# Provide a default DATABASE_URL for `sqlx::test` across the workspace
-DATABASE_URL = "postgres://bittu:bittu@localhost:5432/bittuly_auth"
+# Default DATABASE_URL used by `#[sqlx::test]` in auth-service.
+# For url-service repository tests, override: DATABASE_URL=postgres://bittu:bittu@localhost:5433/bittuly_urls cargo test -p url-service
+# Or use the convenience script: ./scripts/test.sh
+DATABASE_URL = { value = "postgres://bittu:bittu@localhost:5432/bittuly_auth", force = false }
