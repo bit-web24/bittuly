@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bittuly-config
+  namespace: bittuly
+data:
+  # Shared
+  MODE: "production"
+  RUST_LOG: "auth_service=info,url_service=info,consumer_service=info,shared=info"
+
+  # Auth service
+  AUTH_HOST: "0.0.0.0"
+  AUTH_PORT: "3001"
+  AUTH_DATABASE_URL: "postgres://bittu:bittu@postgres-auth:5432/bittuly_auth"
+  CORS_ORIGIN: "http://localhost:8000"
+
+  # URL service
+  URL_HOST: "0.0.0.0"
+  URL_PORT: "3002"
+  URL_DATABASE_URL: "postgres://bittu:bittu@postgres-urls:5432/bittuly_urls"
+  REDIS_URL: "redis://redis:6379"
+
+  # Shared infrastructure
+  RABBITMQ_URL: "amqp://bittu:bittu@rabbitmq:5672"
+
+  # Observability
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4317"
+  OTEL_TRACES_SAMPLER_ARG: "1.0"

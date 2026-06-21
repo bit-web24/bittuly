@@ -311,7 +311,7 @@ mod tests {
             "password": "password123"
         });
 
-        let mut res = server.post("/signup").json(&signup_payload).await;
+        let res = server.post("/signup").json(&signup_payload).await;
         res.assert_status_ok();
 
         let pending_token = res.json::<serde_json::Value>()["pending_token"]
@@ -333,7 +333,7 @@ mod tests {
             "otp": otp
         });
 
-        let mut res_verify = server.post("/verify-otp").json(&verify_payload).await;
+        let res_verify = server.post("/verify-otp").json(&verify_payload).await;
         res_verify.assert_status(StatusCode::CREATED);
 
         // Ensure cookies were set
@@ -367,7 +367,7 @@ mod tests {
             .await;
 
         // Attempt Login
-        let mut res = server
+        let res = server
             .post("/login")
             .json(&serde_json::json!({
                 "email": "login@example.com",

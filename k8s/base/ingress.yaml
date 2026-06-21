@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bittuly-ingress
+  namespace: bittuly
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    # Rate limiting (increased for load testing, was 20)
+    nginx.ingress.kubernetes.io/limit-rps: "2000"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-service
+                port:
+                  number: 3001
+          - path: /api/urls
+            pathType: Prefix
+            backend:
+              service:
+                name: url-service
+                port:
+                  number: 3002
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-service
+                port:
+                  number: 80

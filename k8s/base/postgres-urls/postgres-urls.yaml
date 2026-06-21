@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-urls-pvc
+  namespace: bittuly
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-urls
+  namespace: bittuly
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-urls
+  template:
+    metadata:
+      labels:
+        app: postgres-urls
+    spec:
+      containers:
+        - name: postgres-urls
+          image: postgres:17-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: bittuly_urls
+            - name: POSTGRES_USER
+              value: bittu
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bittuly-secrets
+                  key: POSTGRES_URLS_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "bittu", "-d", "bittuly_urls"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-urls-pvc
+        - name: init-scripts
+          configMap:
+            name: postgres-urls-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-urls
+  namespace: bittuly
+spec:
+  selector:
+    app: postgres-urls
+  ports:
+    - port: 5432
+      targetPort: 5432

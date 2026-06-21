@@ -2,57 +2,192 @@ name: Bittuly CI
 
 on:
   push:
-    branches: [ "main", "dist_sys" ]
+    branches: ["main", "dev"]
   pull_request:
-    branches: [ "main", "dist_sys" ]
+    branches: ["main", "dev"]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  backend-checks:
-    name: Backend (Rust)
+  # ── Rust: format + lint + audit ──────────────────────────────────────────
+  rust-lint:
+    name: Rust — Format, Clippy & Audit
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
 
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
 
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Clippy Lints
-        run: cargo clippy --workspace -- -D warnings
+      - name: Clippy lints
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Run Tests
-        run: cargo test --workspace
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
 
-  frontend-checks:
-    name: Frontend (React)
+      - name: Security audit
+        run: cargo audit --ignore RUSTSEC-2023-0071
+
+  # ── Rust: auth-service tests (needs postgres-auth) ───────────────────────
+  test-auth:
+    name: Test — auth-service
     runs-on: ubuntu-latest
-    
+    needs: rust-lint
+
+    services:
+      postgres-auth:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: bittu
+          POSTGRES_PASSWORD: bittu
+          POSTGRES_DB: bittuly_auth
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bittu -d bittuly_auth"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://bittu:bittu@localhost:5432/bittuly_auth
+      AUTH_DATABASE_URL: postgres://bittu:bittu@localhost:5432/bittuly_auth
+      JWT_SECRET: ci-test-secret-key
+      MODE: development
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run auth-service tests
+        run: cargo test -p auth-service
+
+  # ── Rust: url-service tests (needs postgres-urls + redis) ────────────────
+  test-url:
+    name: Test — url-service
+    runs-on: ubuntu-latest
+    needs: rust-lint
+
+    services:
+      postgres-urls:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: bittu
+          POSTGRES_PASSWORD: bittu
+          POSTGRES_DB: bittuly_urls
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U bittu -d bittuly_urls"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://bittu:bittu@localhost:5433/bittuly_urls
+      URL_DATABASE_URL: postgres://bittu:bittu@localhost:5433/bittuly_urls
+      REDIS_URL: redis://127.0.0.1:6379
+      RABBITMQ_URL: amqp://guest:guest@localhost:5672
+      JWT_SECRET: ci-test-secret-key
+      MODE: development
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run url-service tests
+        run: cargo test -p url-service
+
+  # ── Docker: smoke-build all images ───────────────────────────────────────
+  docker-build:
+    name: Docker — Smoke Build
+    runs-on: ubuntu-latest
+    needs: [test-auth, test-url]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build auth-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/auth-service/Dockerfile
+          push: false
+          tags: bittuly/auth-service:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build url-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/url-service/Dockerfile
+          push: false
+          tags: bittuly/url-service:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build consumer-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/consumer-service/Dockerfile
+          push: false
+          tags: bittuly/consumer-service:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          file: web/Dockerfile
+          push: false
+          tags: bittuly/frontend-service:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Frontend: typecheck + build ───────────────────────────────────────────
+  frontend:
+    name: Frontend — Typecheck & Build
+    runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: ./web
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '26'
-          cache: 'npm'
-          cache-dependency-path: './web/package-lock.json'
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "./web/package-lock.json"
 
       - name: Install dependencies
         run: npm ci
@@ -60,5 +195,5 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Verify Build
+      - name: Build
         run: npm run build

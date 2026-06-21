@@ -25,5 +25,6 @@ pub fn auth_routes() -> Router<AuthStateRef> {
         .route("/health", get(health))
         .route("/metrics", get(metrics))
         .merge(protected)
+        .fallback(|| async { axum::http::StatusCode::NOT_FOUND })
         .layer(middleware::from_fn(shared::metrics::track_metrics))
 }

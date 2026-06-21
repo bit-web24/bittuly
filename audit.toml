@@ -1,0 +1,7 @@
+[advisories]
+ignore = [
+    # Marvin Attack: potential key recovery through timing sidechannels in `rsa` crate.
+    # We use `jsonwebtoken` but ONLY use the HS256 algorithm (symmetric HMAC), 
+    # so we do not use RSA keys and are unaffected by this vulnerability.
+    "RUSTSEC-2023-0071"
+]
