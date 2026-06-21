@@ -5,8 +5,8 @@ metadata:
   namespace: bittuly
   annotations:
     nginx.ingress.kubernetes.io/use-regex: "true"
-    # Rate limiting
-    nginx.ingress.kubernetes.io/limit-rps: "20"
+    # Rate limiting (increased for load testing, was 20)
+    nginx.ingress.kubernetes.io/limit-rps: "2000"
 spec:
   ingressClassName: nginx
   rules:

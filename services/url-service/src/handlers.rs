@@ -110,16 +110,13 @@ pub async fn get_original_url(
     Path(short_code): Path<String>,
 ) -> impl IntoResponse {
     // Singleflight Cache Coalescing (Thundering Herd Protection)
-    // If 200,000 requests hit this exact line simultaneously, ONLY 1 will execute the async block.
-    // The other 199,999 will safely wait in memory and instantly receive the exact same result!
     let result = state
         .l1_cache
         .get_with(short_code.clone(), async {
             let mut redis = state.redis.clone();
 
             let cached: Option<String> = {
-                let span = tracing::info_span!("cache.get_url", short_code = %short_code);
-                let _guard = span.enter();
+                // Ensure we don't hold a !Send tracing guard across an await point
                 match redis.get::<_, Option<String>>(&short_code).await {
                     Ok(v) => v,
                     Err(e) => {
@@ -130,14 +127,11 @@ pub async fn get_original_url(
             };
 
             if let Some(original_url) = cached {
-                tracing::info!(short_code, "cache hit");
                 metrics::counter!("cache_hits").increment(1);
-                // If it's in Redis, it's guaranteed valid because Redis handles TTL eviction natively.
                 return Some((original_url, None));
             }
 
             // 2. Try DB
-            tracing::info!(short_code, "cache miss");
             metrics::counter!("cache_misses").increment(1);
             match url_service::get_original_url(&*state.repo, &short_code).await {
                 Ok(Some((original_url, expires_at))) => {
@@ -145,9 +139,6 @@ pub async fn get_original_url(
                     let original_url_clone = original_url.clone();
                     let short_code_clone = short_code.clone();
                     tokio::spawn(async move {
-                        let span =
-                            tracing::info_span!("cache.set_url", short_code = %short_code_clone);
-                        let _guard = span.enter();
                         if let Some(exp) = expires_at {
                             let ttl = exp.timestamp() - chrono::Utc::now().timestamp();
                             if ttl > 0 {
@@ -182,35 +173,40 @@ pub async fn get_original_url(
             }
 
             // Publish click event asynchronously via RabbitMQ
-            if let Ok(conn) = state.rabbitmq.get().await
-                && let Ok(channel) = conn.create_channel().await
-            {
-                use std::collections::HashMap;
+            let rabbitmq = state.rabbitmq.clone();
+            let short_code_clone = short_code.clone();
+            tokio::spawn(async move {
+                if let Ok(conn) = rabbitmq.get().await
+                    && let Ok(channel) = conn.create_channel().await
+                {
+                    use std::collections::HashMap;
 
-                let mut carrier = HashMap::new();
-                shared::telemetry::inject_context(&mut carrier);
+                    let mut carrier = HashMap::new();
+                    shared::telemetry::inject_context(&mut carrier);
 
-                let mut amqp_headers = shared::lapin::types::FieldTable::default();
-                for (k, v) in carrier {
-                    amqp_headers.insert(
-                        k.into(),
-                        shared::lapin::types::AMQPValue::LongString(v.into()),
-                    );
+                    let mut amqp_headers = shared::lapin::types::FieldTable::default();
+                    for (k, v) in carrier {
+                        amqp_headers.insert(
+                            k.into(),
+                            shared::lapin::types::AMQPValue::LongString(v.into()),
+                        );
+                    }
+                    let props =
+                        shared::lapin::BasicProperties::default().with_headers(amqp_headers);
+
+                    let _ = channel
+                        .basic_publish(
+                            "",
+                            "click_events_queue",
+                            shared::lapin::options::BasicPublishOptions::default(),
+                            short_code_clone.as_bytes(),
+                            props,
+                        )
+                        .await;
+                    metrics::counter!("rabbit_mq_events_published", "queue" => "click_events_queue")
+                        .increment(1);
                 }
-                let props = shared::lapin::BasicProperties::default().with_headers(amqp_headers);
-
-                let _ = channel
-                    .basic_publish(
-                        "",
-                        "click_events_queue",
-                        shared::lapin::options::BasicPublishOptions::default(),
-                        short_code.as_bytes(),
-                        props,
-                    )
-                    .await;
-                metrics::counter!("rabbit_mq_events_published", "queue" => "click_events_queue")
-                    .increment(1);
-            }
+            });
 
             Redirect::temporary(&original_url).into_response()
         }
