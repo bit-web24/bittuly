@@ -1,4 +1,4 @@
-#![cfg(test)]
+#![allow(clippy::new_without_default)]
 use crate::models::Url;
 use crate::repo_trait::UrlRepo;
 use crate::repository::UrlsPage;
