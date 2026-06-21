@@ -1,4 +1,4 @@
-#![cfg(test)]
+#![allow(clippy::new_without_default)]
 use crate::models::{CreateUserPayload, UpdateUserPayload, User};
 use crate::repo_trait::UserRepo;
 use async_trait::async_trait;

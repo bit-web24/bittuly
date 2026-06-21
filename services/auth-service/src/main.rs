@@ -1,16 +1,4 @@
-mod debug_handler;
-mod email;
-mod handlers;
-mod health;
-mod metrics;
-#[cfg(test)]
-mod mock;
-mod models;
-mod otp_store;
-mod repo_trait;
-mod repository;
-mod routes;
-mod services;
+use auth_service::*;
 
 use metrics_exporter_prometheus::PrometheusBuilder;
 use shared::config;

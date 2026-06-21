@@ -1,13 +1,4 @@
-mod handlers;
-mod health;
-mod metrics;
-#[cfg(test)]
-mod mock;
-mod models;
-mod repo_trait;
-mod repository;
-mod routes;
-mod services;
+use url_service::*;
 
 use metrics_exporter_prometheus::PrometheusBuilder;
 use shared::config;
