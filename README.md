@@ -4,7 +4,108 @@ Bittuly is a production-grade, distributed URL shortener built with **Rust (Axum
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ System Design
+
+```mermaid
+graph TB
+    %% ── Actors ──────────────────────────────────────────────
+    Browser(["🌐 Browser"])
+    GHCR[("📦 GHCR\nghcr.io")]
+
+    %% ── Edge ────────────────────────────────────────────────
+    subgraph EDGE ["🛡️  Edge  —  NGINX  :8000"]
+        GW["API Gateway\n━━━━━━━━━━━━━━━━━━━━━\n/api/auth/*   → auth-service\n/api/urls/*   → url-service\n/{short_code} → url-service\n/*            → frontend\n━━━━━━━━━━━━━━━━━━━━━\n🔒 Rate Limits\nlogin/signup  5 req/min  burst 5\nredirects    20 req/s   burst 20\n🔒 Security Headers\nX-Frame-Options · CSP · HSTS\n🚫 /api/*/metrics → 403"]
+    end
+
+    %% ── Services ────────────────────────────────────────────
+    subgraph SVC ["⚙️  Services  —  Kubernetes / bittuly ns"]
+        direction LR
+
+        FE["🖥️  Frontend\nReact 18 · Vite · TypeScript\n━━━━━━━━━━━━━━━━\nreplicas: 1\nCPU: 50m → 200m"]
+
+        subgraph AUTH ["auth-service  :3001"]
+            AS["Rust · Axum\nJWT HS256 · bcrypt\n━━━━━━━━━━━━━━━━━━━━━\nPOST /signup   → OTP email\nPOST /verify-otp → create user\nPOST /login    → set cookies\nDEL  /{id}     → cascade delete\n━━━━━━━━━━━━━━━━━━━━━\nreplicas: 1\nCPU: 50m → 500m\nHealth: GET /health"]
+        end
+
+        subgraph URL ["url-service  :3002"]
+            US["Rust · Axum\nJWT HS256 · base62\n━━━━━━━━━━━━━━━━━━━━━\nPOST /api/urls → shorten\nGET  /api/urls → paginated list\nDEL  /api/urls/{id}\nGET  /{code}   → 307 redirect ⚡\n━━━━━━━━━━━━━━━━━━━━━\nreplicas: 2  HPA: 2→5 @ 60% CPU\nCPU: 100m → 1000m\nHealth: GET /health"]
+        end
+
+        subgraph CONS ["consumer-service  (worker)"]
+            CS["Rust · Tokio\nNo HTTP server\n━━━━━━━━━━━━━━━━━━━━━\n① click_events_queue\n  batch flush every 30s or 17 clicks\n  UPDATE click_count (unnest)\n② user_deleted_queue\n  cascade DEL urls + Redis eviction\n  retry 3s→9s→27s → DLQ\n━━━━━━━━━━━━━━━━━━━━━\nreplicas: 1\nCPU: 50m → 500m"]
+        end
+    end
+
+    %% ── Cache ───────────────────────────────────────────────
+    subgraph CACHE ["⚡  Three-Tier Redirect Cache"]
+        direction LR
+        L1["L1 · Moka\nin-process\n━━━━━━━━━\nTTL: 3s\nCap: 1M entries\nSingleflight\n(Thundering Herd\nprotection)"]
+        L2["L2 · Redis  :6379\ndistributed\n━━━━━━━━━\nKey: {short_code}\nSET / SETEX / DEL\nmaxmem: 256 MB\npolicy: allkeys-lru"]
+        L3["L3 · Postgres\nbittuly_urls\n━━━━━━━━━\nSELECT original_url\nWHERE short_code=$1"]
+        L1 -->|"miss"| L2
+        L2 -->|"miss"| L3
+    end
+
+    %% ── Databases ───────────────────────────────────────────
+    PGA[("🐘 pg-auth  :5432\nbittuly_auth\n━━━━━━━━━\ntable: users\nid · username\nemail · bcrypt(pw)\ncreated_at")]
+    PGU[("🐘 pg-urls  :5433\nbittuly_urls\n━━━━━━━━━\ntable: urls\nurl_id BIGSERIAL\nshort_code base62\noriginal_url\nclick_count · expires_at")]
+
+    %% ── Messaging ───────────────────────────────────────────
+    subgraph MQ ["📨  RabbitMQ  :5672  —  At-Least-Once"]
+        direction TB
+        CEQ["click_events_queue\ndurable"]
+        UDQ["user_deleted_queue\ndurable"]
+        RTQ["retry queues\n3s · 9s · 27s\n(TTL + DLX)"]
+        DLQ["user_deleted_dlq\n(dead letter)"]
+        UDQ -->|"failure\nx-retry-count"| RTQ
+        RTQ -->|"TTL expire\nDLX re-route"| UDQ
+        UDQ -->|"≥ 3 retries"| DLQ
+    end
+
+    %% ── Observability ───────────────────────────────────────
+    subgraph OBS ["🔭  Observability"]
+        direction LR
+        PROM["Prometheus  :9090\nscrape every 5s\nhttp_requests_total\nhttp_request_duration\nlinks_shortened\ncache_hits · cache_misses"]
+        GF["Grafana  :3000\nBittuly Live Traffic\nRPS · Latency\nCache Hits/Misses"]
+        JAE["Jaeger  :16686\nOTLP/gRPC  :4317\nW3C traceparent\nacross HTTP + AMQP"]
+        PROM --> GF
+    end
+
+    %% ── JWT ─────────────────────────────────────────────────
+    subgraph JWTBOX ["🔐  JWT  —  HS256  HttpOnly Cookies"]
+        direction LR
+        JWTD["access_token   15 min  cookie\nrefresh_token  30 days  cookie\npending_token  10 min  JSON body\n(carries bcrypt pw+otp — no DB row until OTP verified)"]
+    end
+
+    %% ── CI/CD ───────────────────────────────────────────────
+    subgraph CICD ["♾️  CI/CD  —  GitHub Actions"]
+        direction LR
+        CI["CI\nfmt · clippy · audit\ncargo test × 2\nnpm typecheck"]
+        CD["CD  (master only)\ndocker build × 4\npush ghcr.io/{svc}:{sha}"]
+        CI --> CD
+    end
+
+    %% ── Edges ───────────────────────────────────────────────
+    Browser -->|":8000"| GW
+    GW --> FE & AS & US
+    CICD --> GHCR -->|"imagePull"| SVC
+
+    AS -->|"READ/WRITE"| PGA
+    AS -->|"publish {user_id}"| UDQ
+
+    US -->|"READ/WRITE"| PGU
+    US -->|"L1 get_with"| L1
+    L3 -.->|"sqlx"| PGU
+    US -->|"tokio::spawn\npublish short_code"| CEQ
+
+    CEQ -->|"consume"| CS
+    UDQ -->|"consume"| CS
+    CS -->|"batch UPDATE"| PGU
+    CS -->|"DEL key"| L2
+
+    PROM -->|"scrape"| AS & US
+    AS & US & CS -->|"OTLP/gRPC"| JAE
+```
 
 ```mermaid
 graph TB
