@@ -271,7 +271,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
                         // 3. Evict from Redis
                         for code in short_codes {
-                            let cache_key = format!("url:{}", code);
+                            let cache_key = code.clone();
                             let _: () = redis_conn.del(&cache_key).await.unwrap_or_default();
                         }
 
