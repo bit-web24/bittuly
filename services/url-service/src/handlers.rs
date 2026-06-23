@@ -112,7 +112,7 @@ pub async fn get_original_url(
     // Singleflight Cache Coalescing (Thundering Herd Protection)
     let result = state
         .l1_cache
-        .get_with(short_code.clone(), async {
+        .try_get_with(short_code.clone(), async {
             let mut redis = state.redis.clone();
 
             let cached: Option<String> = {
@@ -128,7 +128,7 @@ pub async fn get_original_url(
 
             if let Some(original_url) = cached {
                 metrics::counter!("cache_hits").increment(1);
-                return Some((original_url, None));
+                return Ok::<_, axum::http::StatusCode>(Some((original_url, None)));
             }
 
             // 2. Try DB
@@ -154,16 +154,20 @@ pub async fn get_original_url(
                                 .unwrap_or_default();
                         }
                     });
-                    Some((original_url, expires_at))
+                    Ok(Some((original_url, expires_at)))
                 }
-                _ => None, // Not found or error
+                Ok(None) => Ok(None), // True 404 Not Found
+                Err(e) => {
+                    tracing::error!("DB error during redirect: {:?}", e);
+                    Err(axum::http::StatusCode::SERVICE_UNAVAILABLE)
+                }
             }
         })
         .await;
 
     // Process Result
     match result {
-        Some((original_url, expires_at)) => {
+        Ok(Some((original_url, expires_at))) => {
             // Re-verify expiration in case it expired while sitting in the 3-second L1 microcache
             if let Some(exp) = expires_at
                 && exp < chrono::Utc::now()
@@ -210,7 +214,12 @@ pub async fn get_original_url(
 
             Redirect::temporary(&original_url).into_response()
         }
-        None => StatusCode::NOT_FOUND.into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            // Moka wraps the error in Arc
+            let status = *e;
+            status.into_response()
+        }
     }
 }
 

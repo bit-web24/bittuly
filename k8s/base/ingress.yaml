@@ -5,8 +5,6 @@ metadata:
   namespace: bittuly
   annotations:
     nginx.ingress.kubernetes.io/use-regex: "true"
-    # Rate limiting (increased for load testing, was 20)
-    nginx.ingress.kubernetes.io/limit-rps: "2000"
 spec:
   ingressClassName: nginx
   rules:
@@ -21,6 +19,13 @@ spec:
                   number: 3001
           - path: /api/urls
             pathType: Prefix
+            backend:
+              service:
+                name: url-service
+                port:
+                  number: 3002
+          - path: /(?!(api|login|signup|verify-otp|dashboard|insights|profile|settings|health|unavailable|assets))([a-zA-Z0-9_-]{3,8})
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: url-service
