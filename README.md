@@ -2,9 +2,14 @@
 
 Bittuly is a production-grade, distributed URL shortener built with **Rust (Axum)** and **React (Vite)**. It uses a microservices architecture with isolated databases per service, a two-tier caching system, asynchronous event-driven analytics, and full observability via OpenTelemetry, Prometheus, and Grafana.
 
+## K8S Topology
+
+<img width="2720" height="3600" alt="bittuly_k8s_topology" src="https://github.com/user-attachments/assets/d44e477e-e01a-49fd-a6bb-1deefceec008" />
+
+
 ---
 
-## 🏗️ System Design
+## 🏗️ Architecture Design
 
 ```mermaid
 graph TB
