@@ -5,7 +5,7 @@ metadata:
   namespace: bittuly
 data:
   # Shared
-  MODE: "production"
+  MODE: "development"
   RUST_LOG: "auth_service=info,url_service=info,consumer_service=info,shared=info"
 
   # Auth service

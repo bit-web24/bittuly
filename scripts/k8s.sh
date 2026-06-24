@@ -46,8 +46,7 @@ cmd_up() {
     log "Installing NGINX Ingress Controller..."
     kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
     kubectl wait --namespace ingress-nginx \
-        --for=condition=ready pod \
-        --selector=app.kubernetes.io/component=controller \
+        --for=condition=available deployment/ingress-nginx-controller \
         --timeout=120s
 
     log "Building and deploying all services..."
@@ -62,11 +61,17 @@ cmd_deploy() {
     docker build -f services/consumer-service/Dockerfile -t bittuly/consumer-service:local .
     docker build -f web/Dockerfile                       -t bittuly/frontend-service:local  web/
 
-    log "Loading images into kind..."
+    log "Loading custom application images into kind..."
     kind load docker-image bittuly/auth-service:local     --name "${CLUSTER_NAME}"
     kind load docker-image bittuly/url-service:local      --name "${CLUSTER_NAME}"
     kind load docker-image bittuly/consumer-service:local --name "${CLUSTER_NAME}"
     kind load docker-image bittuly/frontend-service:local --name "${CLUSTER_NAME}"
+
+    log "Pre-loading third-party dependencies from local Docker cache to speed up boot..."
+    for img in postgres:17-alpine redis:7-alpine rabbitmq:3-management jaegertracing/all-in-one:latest; do
+        docker pull "$img" >/dev/null 2>&1 || true
+        kind load docker-image "$img" --name "${CLUSTER_NAME}" 2>/dev/null || true
+    done
 
     log "Applying Kubernetes manifests..."
     kubectl apply -f k8s/base/namespace.yaml
@@ -81,8 +86,8 @@ cmd_deploy() {
     kubectl apply -f k8s/base/jaeger/jaeger.yaml
 
     log "Waiting for databases to be ready..."
-    kubectl wait -n "${NAMESPACE}" --for=condition=ready pod --selector=app=postgres-auth --timeout=120s
-    kubectl wait -n "${NAMESPACE}" --for=condition=ready pod --selector=app=postgres-urls --timeout=120s
+    kubectl wait -n "${NAMESPACE}" --for=condition=available deployment/postgres-auth --timeout=300s
+    kubectl wait -n "${NAMESPACE}" --for=condition=available deployment/postgres-urls --timeout=300s
 
     kubectl apply -f k8s/base/auth-service/auth-service.yaml
     kubectl apply -f k8s/base/url-service/url-service.yaml

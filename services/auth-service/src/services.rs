@@ -9,12 +9,21 @@ use uuid::Uuid;
 
 type ServiceResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+#[inline]
+fn get_bcrypt_cost() -> u32 {
+    if std::env::var("MODE").unwrap_or_default() == "development" {
+        4 // Minimum cost for fast local load testing without saturating CPU
+    } else {
+        10 // Production cost (12 is default, but 10 meets our 400ms SLO under moderate load better)
+    }
+}
+
 #[allow(dead_code)]
 pub async fn create_user(
     repo: &dyn UserRepo,
     mut payload: CreateUserPayload,
 ) -> ServiceResult<AuthUserResponse> {
-    payload.password = bcrypt::hash(&payload.password, bcrypt::DEFAULT_COST)?;
+    payload.password = bcrypt::hash(&payload.password, get_bcrypt_cost())?;
     let user = repo.create_user(payload).await?;
     let token = create_access_token(user.id)?;
     let refresh_token = create_refresh_token(user.id)?;
@@ -44,13 +53,20 @@ pub async fn request_signup(
     }
 
     // Hash the password before it goes anywhere near a JWT.
-    payload.password = bcrypt::hash(&payload.password, bcrypt::DEFAULT_COST)?;
+    let plain_password = payload.password.clone();
+    payload.password =
+        tokio::task::spawn_blocking(move || bcrypt::hash(&plain_password, get_bcrypt_cost()))
+            .await
+            .map_err(|_| "task panicked")??;
 
     // Generate a 6-digit OTP and bcrypt-hash it for the pending token.
     let otp: String = rand::rng()
         .random_range(100_000u32..=999_999u32)
         .to_string();
-    let otp_hash = bcrypt::hash(&otp, bcrypt::DEFAULT_COST)?;
+    let otp_clone = otp.clone();
+    let otp_hash = tokio::task::spawn_blocking(move || bcrypt::hash(&otp_clone, get_bcrypt_cost()))
+        .await
+        .map_err(|_| "task panicked")??;
 
     // Fire the email first — if it fails we return early without issuing a token.
     send_otp_email(&payload.email, &otp).await?;
@@ -79,7 +95,13 @@ pub async fn verify_otp(
     let claims = decode_pending_token(pending_token)?;
 
     // Verify the submitted OTP against the hashed one inside the token.
-    if !bcrypt::verify(otp, &claims.otp_hash)? {
+    let otp_clone = otp.to_string();
+    let hash_clone = claims.otp_hash.clone();
+    let is_valid = tokio::task::spawn_blocking(move || bcrypt::verify(&otp_clone, &hash_clone))
+        .await
+        .map_err(|_| "task panicked")??;
+
+    if !is_valid {
         return Err("invalid OTP".into());
     }
 
@@ -111,7 +133,14 @@ pub async fn login(
         .await?
         .ok_or("invalid credentials")?;
 
-    if !bcrypt::verify(password, &user.password)? {
+    let password_clone = password.to_string();
+    let hash_clone = user.password.clone();
+    let is_valid =
+        tokio::task::spawn_blocking(move || bcrypt::verify(&password_clone, &hash_clone))
+            .await
+            .map_err(|_| "task panicked")??;
+
+    if !is_valid {
         return Err("invalid credentials".into());
     }
 
@@ -138,7 +167,12 @@ pub async fn update_user(
     mut payload: UpdateUserPayload,
 ) -> ServiceResult<AuthUserResponse> {
     if let Some(ref plain) = payload.password {
-        payload.password = Some(bcrypt::hash(plain, bcrypt::DEFAULT_COST)?);
+        let plain_clone = plain.clone();
+        payload.password = Some(
+            tokio::task::spawn_blocking(move || bcrypt::hash(&plain_clone, get_bcrypt_cost()))
+                .await
+                .map_err(|_| "task panicked")??,
+        );
     }
     let user = repo.update_user(user_id, payload).await?;
     let token = create_access_token(user.id)?;
@@ -178,7 +212,7 @@ mod tests {
         repo.create_user(CreateUserPayload {
             username: "testuser".into(),
             email: "test@example.com".into(),
-            password: bcrypt::hash("password123", bcrypt::DEFAULT_COST).unwrap(),
+            password: bcrypt::hash("password123", get_bcrypt_cost()).unwrap(),
         })
         .await
         .unwrap();
@@ -199,7 +233,7 @@ mod tests {
         repo.create_user(CreateUserPayload {
             username: "testuser".into(),
             email: "test@example.com".into(),
-            password: bcrypt::hash("password123", bcrypt::DEFAULT_COST).unwrap(),
+            password: bcrypt::hash("password123", get_bcrypt_cost()).unwrap(),
         })
         .await
         .unwrap();
