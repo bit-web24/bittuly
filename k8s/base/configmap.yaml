@@ -5,20 +5,29 @@ metadata:
   namespace: bittuly
 data:
   # Shared
-  MODE: "development"
+  MODE: "production"
   RUST_LOG: "auth_service=info,url_service=info,consumer_service=info,shared=info"
 
   # Auth service
   AUTH_HOST: "0.0.0.0"
   AUTH_PORT: "3001"
-  AUTH_DATABASE_URL: "postgres://bittu:bittu@postgres-auth:5432/bittuly_auth"
+  # -rw → always the CNPG primary (handles writes + reads when replica is down)
+  AUTH_DATABASE_URL: "postgres://bittu:bittu@postgres-auth-rw:5432/bittuly_auth"
+  # -ro → load-balanced across replicas (read-only queries)
+  AUTH_DATABASE_READ_URL: "postgres://bittu:bittu@postgres-auth-ro:5432/bittuly_auth"
   CORS_ORIGIN: "http://localhost:8000"
 
   # URL service
   URL_HOST: "0.0.0.0"
   URL_PORT: "3002"
-  URL_DATABASE_URL: "postgres://bittu:bittu@postgres-urls:5432/bittuly_urls"
+  # -rw → always the CNPG primary
+  URL_DATABASE_URL: "postgres://bittu:bittu@postgres-urls-rw:5432/bittuly_urls"
+  # -ro → load-balanced across replicas
+  URL_DATABASE_READ_URL: "postgres://bittu:bittu@postgres-urls-ro:5432/bittuly_urls"
   REDIS_URL: "redis://redis:6379"
+
+  # Consumer service — writes only, always use primary
+  # URL_DATABASE_URL is re-used (same var, primary only)
 
   # Shared infrastructure
   RABBITMQ_URL: "amqp://bittu:bittu@rabbitmq:5672"

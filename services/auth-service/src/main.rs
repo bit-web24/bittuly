@@ -18,7 +18,10 @@ async fn main() {
 
     let db = postgres::init_pg_pool(&settings.database_url)
         .await
-        .expect("Failed to connect to Database");
+        .expect("Failed to connect to primary database");
+    let read_db = postgres::init_pg_pool(&settings.database_read_url)
+        .await
+        .expect("Failed to connect to read-replica database");
 
     let rabbitmq = shared::rabbitmq::init_rabbitmq_pool(&amqp_url)
         .await
@@ -29,7 +32,13 @@ async fn main() {
         .expect("Failed to install Prometheus recorder");
 
     let pg_repo = Arc::new(repository::PgUserRepo(db));
-    let auth_state = Arc::new(models::AuthState::new(pg_repo, rabbitmq, prometheus_handle));
+    let read_pg_repo = Arc::new(repository::PgUserRepo(read_db));
+    let auth_state = Arc::new(models::AuthState::new(
+        pg_repo,
+        read_pg_repo,
+        rabbitmq,
+        prometheus_handle,
+    ));
 
     let cors = CorsLayer::new()
         .allow_origin(

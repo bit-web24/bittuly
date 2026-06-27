@@ -1,0 +1,59 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres-urls
+  namespace: bittuly
+spec:
+  instances: 2   # 1 primary + 1 read replica
+
+  imageName: ghcr.io/cloudnative-pg/postgresql:17
+
+  storage:
+    size: 1Gi
+
+  bootstrap:
+    initdb:
+      database: bittuly_urls
+      owner: bittu
+      secret:
+        name: bittuly-secrets   # key: POSTGRES_URLS_PASSWORD
+      postInitApplicationSQL:
+        - "CREATE EXTENSION IF NOT EXISTS pgcrypto"
+        - "CREATE EXTENSION IF NOT EXISTS pg_trgm"
+        - |
+          CREATE TABLE IF NOT EXISTS urls (
+            url_id      BIGSERIAL   PRIMARY KEY,
+            short_code  TEXT        UNIQUE,
+            original_url TEXT       NOT NULL,
+            user_id     UUID        NOT NULL,
+            click_count BIGINT      NOT NULL DEFAULT 0,
+            expires_at  TIMESTAMPTZ,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE(original_url, user_id)
+          )
+        - "CREATE INDEX IF NOT EXISTS idx_urls_user_id        ON urls(user_id, url_id DESC)"
+        - "CREATE INDEX IF NOT EXISTS idx_urls_short_code     ON urls(short_code)"
+        - "CREATE INDEX IF NOT EXISTS idx_urls_original_url_trgm ON urls USING GIN (original_url gin_trgm_ops)"
+        - "CREATE INDEX IF NOT EXISTS idx_urls_short_code_trgm   ON urls USING GIN (short_code gin_trgm_ops)"
+        - "CREATE INDEX IF NOT EXISTS idx_urls_expires_at     ON urls(expires_at)"
+
+  # CNPG auto-creates:
+  #   postgres-urls-rw  → primary   (writes)
+  #   postgres-urls-ro  → replicas  (reads)
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  failoverDelay: 0
+
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "128MB"
+      effective_cache_size: "256MB"

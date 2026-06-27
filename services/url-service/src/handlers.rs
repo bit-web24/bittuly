@@ -50,7 +50,8 @@ pub async fn get_all_urls(
     let limit = params.limit.unwrap_or(DEFAULT_PAGE_LIMIT);
     let search = params.search.filter(|s| !s.trim().is_empty());
 
-    match url_service::get_urls_page(&*state.repo, claims.sub, cursor, limit, search).await {
+    // Route to read replica — this is a pure SELECT, safe for replicas.
+    match url_service::get_urls_page(&*state.read_repo, claims.sub, cursor, limit, search).await {
         Ok(page) => (
             StatusCode::OK,
             Json(UrlsPageResponse {
@@ -131,9 +132,9 @@ pub async fn get_original_url(
                 return Ok::<_, axum::http::StatusCode>(Some((original_url, None)));
             }
 
-            // 2. Try DB
+            // Route to read replica — this is a pure SELECT by short_code.
             metrics::counter!("cache_misses").increment(1);
-            match url_service::get_original_url(&*state.repo, &short_code).await {
+            match url_service::get_original_url(&*state.read_repo, &short_code).await {
                 Ok(Some((original_url, expires_at))) => {
                     // 3. Update Redis cache in background
                     let original_url_clone = original_url.clone();

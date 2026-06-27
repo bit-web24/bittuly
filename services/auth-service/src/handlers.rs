@@ -36,7 +36,8 @@ pub async fn login(
     if let Err(errors) = payload.validate() {
         return validation_error_response(errors).into_response();
     }
-    match user_service::login(&*state.repo, &payload.email, &payload.password).await {
+    // Route to read replica — login is a SELECT by email, safe for replicas.
+    match user_service::login(&*state.read_repo, &payload.email, &payload.password).await {
         Ok(auth) => {
             let mut response = (StatusCode::OK, Json(auth.user)).into_response();
             if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {
@@ -83,7 +84,8 @@ pub async fn get_user_by_id(
         return StatusCode::FORBIDDEN.into_response();
     }
 
-    match user_service::get_user_by_id(&*state.repo, user_id).await {
+    // Route to read replica — SELECT by id (PK), safe for replicas.
+    match user_service::get_user_by_id(&*state.read_repo, user_id).await {
         Ok(Some(user)) => (StatusCode::OK, Json(user)).into_response(),
         Ok(None) => (
             StatusCode::NOT_FOUND,

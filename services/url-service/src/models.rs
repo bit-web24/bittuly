@@ -16,7 +16,10 @@ pub type CachedUrlResult = Option<(String, Option<DateTime<Utc>>)>;
 
 pub struct UrlState {
     pub rabbitmq: shared::deadpool_lapin::Pool,
+    /// Write pool — always the CNPG primary.
     pub repo: Arc<dyn UrlRepo>,
+    /// Read pool — CNPG replica(s). Falls back to primary if replicas unavailable.
+    pub read_repo: Arc<dyn UrlRepo>,
     pub redis: RedisConn,
     #[allow(dead_code)]
     pub started_at: Instant,
@@ -31,6 +34,7 @@ impl UrlState {
         rabbitmq: shared::deadpool_lapin::Pool,
         redis: RedisConn,
         repo: Arc<dyn UrlRepo>,
+        read_repo: Arc<dyn UrlRepo>,
         cors_origin: String,
         prometheus_handle: PrometheusHandle,
     ) -> Self {
@@ -42,6 +46,7 @@ impl UrlState {
         Self {
             rabbitmq,
             repo,
+            read_repo,
             redis,
             started_at: Instant::now(),
             cors_origin,
