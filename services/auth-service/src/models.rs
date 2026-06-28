@@ -11,7 +11,10 @@ use uuid::Uuid;
 use validator::Validate;
 
 pub struct AuthState {
+    /// Write pool — always the CNPG primary.
     pub repo: Arc<dyn UserRepo>,
+    /// Read pool — CNPG replica(s). Falls back to primary if replicas unavailable.
+    pub read_repo: Arc<dyn UserRepo>,
     pub rabbitmq: shared::deadpool_lapin::Pool,
     #[allow(dead_code)]
     pub started_at: Instant,
@@ -22,11 +25,13 @@ pub struct AuthState {
 impl AuthState {
     pub fn new(
         repo: Arc<dyn UserRepo>,
+        read_repo: Arc<dyn UserRepo>,
         rabbitmq: shared::deadpool_lapin::Pool,
         prometheus_handle: PrometheusHandle,
     ) -> Self {
         Self {
             repo,
+            read_repo,
             rabbitmq,
             started_at: Instant::now(),
             prometheus_handle,

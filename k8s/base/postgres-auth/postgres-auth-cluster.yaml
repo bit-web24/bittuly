@@ -1,0 +1,59 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres-auth
+  namespace: bittuly
+spec:
+  instances: 2   # 1 primary + 1 read replica
+
+  # PostgreSQL version
+  imageName: ghcr.io/cloudnative-pg/postgresql:17
+
+  # Storage for each instance
+  storage:
+    size: 1Gi
+
+  # App credentials — CNPG creates a Secret named postgres-auth-app
+  # with keys: username, password, uri, jdbc-uri, pgpass
+  bootstrap:
+    initdb:
+      database: bittuly_auth
+      owner: bittu
+      secret:
+        name: bittuly-secrets   # key: POSTGRES_AUTH_PASSWORD
+      postInitApplicationSQL:
+        - "CREATE EXTENSION IF NOT EXISTS pgcrypto"
+        - |
+          CREATE TABLE IF NOT EXISTS users (
+            id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+            username   TEXT        NOT NULL,
+            email      TEXT        NOT NULL UNIQUE,
+            password   TEXT        NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+          )
+
+  # Connection pooler on top of replicas (read-only)
+  # CNPG auto-creates two Services:
+  #   postgres-auth-rw  → always the primary   (writes)
+  #   postgres-auth-ro  → all replicas          (reads)
+  #   postgres-auth-r   → all instances         (any)
+
+  # Resource limits (suitable for local Kind cluster)
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  # Promote the first replica automatically if the primary fails
+  failoverDelay: 0
+
+  # PostgreSQL tuning
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "128MB"
+      effective_cache_size: "256MB"

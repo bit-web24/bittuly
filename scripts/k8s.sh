@@ -49,6 +49,13 @@ cmd_up() {
         --for=condition=available deployment/ingress-nginx-controller \
         --timeout=120s
 
+    log "Installing CloudNativePG operator..."
+    kubectl apply --server-side -f \
+        https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/releases/cnpg-1.25.0.yaml
+    kubectl wait --namespace cnpg-system \
+        --for=condition=available deployment/cnpg-controller-manager \
+        --timeout=180s
+
     log "Building and deploying all services..."
     cmd_deploy
 }
@@ -68,8 +75,13 @@ cmd_deploy() {
     kind load docker-image bittuly/frontend-service:local --name "${CLUSTER_NAME}"
 
     log "Pre-loading third-party dependencies from local Docker cache to speed up boot..."
-    for img in postgres:17-alpine redis:7-alpine rabbitmq:3-management jaegertracing/all-in-one:latest; do
-        docker pull "$img" >/dev/null 2>&1 || true
+    # Include CNPG postgres image used by the Cluster CRDs
+    for img in \
+        ghcr.io/cloudnative-pg/postgresql:17 \
+        redis:7-alpine \
+        rabbitmq:3-management \
+        jaegertracing/all-in-one:latest; do
+        docker pull "$img" > /dev/null 2>&1 || true
         kind load docker-image "$img" --name "${CLUSTER_NAME}" 2>/dev/null || true
     done
 
@@ -77,17 +89,20 @@ cmd_deploy() {
     kubectl apply -f k8s/base/namespace.yaml
     kubectl apply -f k8s/base/configmap.yaml
     kubectl apply -f k8s/base/secret.yaml
-    kubectl apply -f k8s/base/postgres-auth/init-configmap.yaml
-    kubectl apply -f k8s/base/postgres-auth/postgres-auth.yaml
-    kubectl apply -f k8s/base/postgres-urls/init-configmap.yaml
-    kubectl apply -f k8s/base/postgres-urls/postgres-urls.yaml
+    # CNPG Cluster CRDs — schema is embedded in the CRD (no separate init-configmap needed)
+    kubectl apply -f k8s/base/postgres-auth/postgres-auth-cluster.yaml
+    kubectl apply -f k8s/base/postgres-urls/postgres-urls-cluster.yaml
     kubectl apply -f k8s/base/redis/redis.yaml
     kubectl apply -f k8s/base/rabbitmq/rabbitmq.yaml
     kubectl apply -f k8s/base/jaeger/jaeger.yaml
 
-    log "Waiting for databases to be ready..."
-    kubectl wait -n "${NAMESPACE}" --for=condition=available deployment/postgres-auth --timeout=300s
-    kubectl wait -n "${NAMESPACE}" --for=condition=available deployment/postgres-urls --timeout=300s
+    log "Waiting for CNPG database clusters to be Ready (primary + replica each)..."
+    kubectl wait -n "${NAMESPACE}" \
+        --for=condition=Ready cluster/postgres-auth \
+        --timeout=300s
+    kubectl wait -n "${NAMESPACE}" \
+        --for=condition=Ready cluster/postgres-urls \
+        --timeout=300s
 
     kubectl apply -f k8s/base/auth-service/auth-service.yaml
     kubectl apply -f k8s/base/url-service/url-service.yaml

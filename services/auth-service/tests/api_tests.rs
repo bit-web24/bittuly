@@ -28,7 +28,12 @@ async fn setup_app() -> TestServer {
         })
         .clone();
 
-    let auth_state = Arc::new(AuthState::new(repo, rabbitmq, prometheus_handle));
+    let auth_state = Arc::new(AuthState::new(
+        repo.clone(),
+        repo,
+        rabbitmq,
+        prometheus_handle,
+    ));
 
     let app = auth_routes().with_state(auth_state);
     TestServer::new(app)

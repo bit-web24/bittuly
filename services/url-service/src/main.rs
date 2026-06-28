@@ -17,7 +17,10 @@ async fn main() {
     let settings = config::UrlConfig::from_env().expect("Failed to load setting from environment");
     let db = postgres::init_pg_pool(&settings.database_url)
         .await
-        .expect("Failed to connect to Database");
+        .expect("Failed to connect to primary database");
+    let read_db = postgres::init_pg_pool(&settings.database_read_url)
+        .await
+        .expect("Failed to connect to read-replica database");
     let redis = redis::init_redis(&settings.redis_url)
         .await
         .expect("Failed to connect to Redis");
@@ -32,10 +35,12 @@ async fn main() {
         .expect("Failed to install Prometheus recorder");
 
     let pg_repo = Arc::new(repository::PgUrlRepo(db));
+    let read_pg_repo = Arc::new(repository::PgUrlRepo(read_db));
     let url_state = Arc::new(models::UrlState::new(
         rabbitmq,
         redis,
         pg_repo,
+        read_pg_repo,
         settings.cors_origin.clone(),
         prometheus_handle,
     ));

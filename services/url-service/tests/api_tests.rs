@@ -36,6 +36,7 @@ async fn setup_app() -> TestServer {
     let state = Arc::new(UrlState::new(
         rabbitmq,
         redis,
+        repo.clone(),
         repo,
         "http://localhost:8000".to_string(),
         prometheus_handle,
