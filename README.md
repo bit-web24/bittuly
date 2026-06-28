@@ -481,19 +481,78 @@ flowchart LR
 
 ## 🛠️ Useful Commands
 
+### Local Development
+
 ```bash
+# Run a service with hot-reload (cargo-watch required)
+cargo dev-auth        # auth-service   :3001
+cargo dev-urls        # url-service    :3002
+cargo dev-consumer    # consumer-service
+
+# Run tests per service
+cargo test-auth       # auth-service tests (uses localhost:5432)
+cargo test-urls       # url-service tests  (uses localhost:5433)
+
+# Or use the convenience script (handles DATABASE_URL switching)
+./scripts/test.sh           # all services
+./scripts/test.sh auth      # auth-service only
+./scripts/test.sh url       # url-service only
+
 # Wipe databases and restart fresh
 docker compose down -v && docker compose up -d
-
-# Run full local CI checks (same as GitHub Actions)
-./scripts/check.sh
-
-# API endpoint smoke tests
-./scripts/api-test.sh
-
-# Load test (k6 via kubectl inside cluster)
-./scripts/load-test.sh
 
 # Production build
 cargo build --release
 ```
+
+### Kubernetes
+
+```bash
+# Full cluster lifecycle
+./scripts/k8s.sh up       # create kind cluster, install CNPG operator, load images, apply manifests
+./scripts/k8s.sh deploy   # rebuild images + re-apply manifests on an existing cluster
+./scripts/k8s.sh status   # show nodes, pods, and services
+./scripts/k8s.sh down     # tear down the kind cluster
+
+# Load test (k6 — runs inside the cluster via kubectl)
+./scripts/load-test.sh
+
+# Port-forward internal services for local inspection
+kubectl port-forward -n bittuly svc/rabbitmq 15672:15672   # RabbitMQ management UI
+kubectl port-forward -n bittuly svc/jaeger   16686:16686   # Jaeger trace UI
+
+# Delete the legacy standalone Postgres pods (superseded by CloudNativePG)
+kubectl delete deployment postgres-auth postgres-urls -n bittuly
+```
+
+### Database (CloudNativePG)
+
+```bash
+# Connect to auth primary
+kubectl exec -it postgres-auth-1 -n bittuly -- psql -U postgres -d bittuly_auth
+
+# Connect to urls primary
+kubectl exec -it postgres-urls-1 -n bittuly -- psql -U postgres -d bittuly_urls
+
+# Check cluster health
+kubectl get clusters -n bittuly
+```
+
+---
+
+## 🪝 Git Hooks
+
+Two local git hooks are provided in `scripts/` and must be installed manually once:
+
+```bash
+# Install hooks
+cp scripts/pre-commit.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+cp scripts/pre-push.sh   .git/hooks/pre-push   && chmod +x .git/hooks/pre-push
+```
+
+| Hook | Trigger | What it does |
+|---|---|---|
+| `pre-commit` | Every `git commit` | Runs `cargo fmt --all` and re-stages any formatted files automatically |
+| `pre-push` | Every `git push` | Runs the full local CI suite: `cargo fmt`, `cargo clippy`, `cargo test`, `npm typecheck`, `npm build` |
+
+> **Tip:** The pre-push hook runs the same checks as the GitHub Actions CI pipeline, so you catch failures locally before they hit the remote.
