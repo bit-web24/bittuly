@@ -33,10 +33,12 @@ async fn main() {
 
     let pg_repo = Arc::new(repository::PgUserRepo(db));
     let read_pg_repo = Arc::new(repository::PgUserRepo(read_db));
+    let hasher = Arc::new(password_hasher::BcryptHasher::from_mode(&settings.mode));
     let auth_state = Arc::new(models::AuthState::new(
         pg_repo,
         read_pg_repo,
         rabbitmq,
+        hasher,
         prometheus_handle,
     ));
 

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::password_hasher::PasswordHasher;
 use crate::repo_trait::UserRepo;
 use chrono::DateTime;
 use chrono::Utc;
@@ -16,6 +17,9 @@ pub struct AuthState {
     /// Read pool — CNPG replica(s). Falls back to primary if replicas unavailable.
     pub read_repo: Arc<dyn UserRepo>,
     pub rabbitmq: shared::deadpool_lapin::Pool,
+    /// Strategy: handles password hashing/verification.
+    /// Swapped out for a fast no-op hasher in tests.
+    pub hasher: Arc<dyn PasswordHasher>,
     #[allow(dead_code)]
     pub started_at: Instant,
     #[allow(dead_code)]
@@ -27,12 +31,14 @@ impl AuthState {
         repo: Arc<dyn UserRepo>,
         read_repo: Arc<dyn UserRepo>,
         rabbitmq: shared::deadpool_lapin::Pool,
+        hasher: Arc<dyn PasswordHasher>,
         prometheus_handle: PrometheusHandle,
     ) -> Self {
         Self {
             repo,
             read_repo,
             rabbitmq,
+            hasher,
             started_at: Instant::now(),
             prometheus_handle,
         }

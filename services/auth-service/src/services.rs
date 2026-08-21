@@ -1,5 +1,6 @@
 use crate::email::send_otp_email;
 use crate::models::{AuthUserResponse, CreateUserPayload, UpdateUserPayload, User};
+use crate::password_hasher::PasswordHasher;
 use crate::repo_trait::UserRepo;
 use rand::Rng;
 use shared::jwt::{
@@ -9,21 +10,13 @@ use uuid::Uuid;
 
 type ServiceResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-#[inline]
-fn get_bcrypt_cost() -> u32 {
-    if std::env::var("MODE").unwrap_or_default() == "development" {
-        4 // Minimum cost for fast local load testing without saturating CPU
-    } else {
-        10 // Production cost (12 is default, but 10 meets our 400ms SLO under moderate load better)
-    }
-}
-
 #[allow(dead_code)]
 pub async fn create_user(
     repo: &dyn UserRepo,
+    hasher: &dyn PasswordHasher,
     mut payload: CreateUserPayload,
 ) -> ServiceResult<AuthUserResponse> {
-    payload.password = bcrypt::hash(&payload.password, get_bcrypt_cost())?;
+    payload.password = hasher.hash(&payload.password).await?;
     let user = repo.create_user(payload).await?;
     let token = create_access_token(user.id)?;
     let refresh_token = create_refresh_token(user.id)?;
@@ -45,6 +38,7 @@ pub async fn create_user(
 /// expires in 10 minutes. No user row is created yet.
 pub async fn request_signup(
     repo: &dyn UserRepo,
+    hasher: &dyn PasswordHasher,
     mut payload: CreateUserPayload,
 ) -> ServiceResult<String> {
     // Reject if email is already taken so we don't send an OTP pointlessly.
@@ -53,20 +47,13 @@ pub async fn request_signup(
     }
 
     // Hash the password before it goes anywhere near a JWT.
-    let plain_password = payload.password.clone();
-    payload.password =
-        tokio::task::spawn_blocking(move || bcrypt::hash(&plain_password, get_bcrypt_cost()))
-            .await
-            .map_err(|_| "task panicked")??;
+    payload.password = hasher.hash(&payload.password).await?;
 
-    // Generate a 6-digit OTP and bcrypt-hash it for the pending token.
+    // Generate a 6-digit OTP and hash it for the pending token.
     let otp: String = rand::rng()
         .random_range(100_000u32..=999_999u32)
         .to_string();
-    let otp_clone = otp.clone();
-    let otp_hash = tokio::task::spawn_blocking(move || bcrypt::hash(&otp_clone, get_bcrypt_cost()))
-        .await
-        .map_err(|_| "task panicked")??;
+    let otp_hash = hasher.hash(&otp).await?;
 
     // Fire the email first — if it fails we return early without issuing a token.
     send_otp_email(&payload.email, &otp).await?;
@@ -88,6 +75,7 @@ pub async fn request_signup(
 /// `otp` is the 6-digit code the user received by email.
 pub async fn verify_otp(
     repo: &dyn UserRepo,
+    hasher: &dyn PasswordHasher,
     pending_token: &str,
     otp: &str,
 ) -> ServiceResult<AuthUserResponse> {
@@ -95,11 +83,7 @@ pub async fn verify_otp(
     let claims = decode_pending_token(pending_token)?;
 
     // Verify the submitted OTP against the hashed one inside the token.
-    let otp_clone = otp.to_string();
-    let hash_clone = claims.otp_hash.clone();
-    let is_valid = tokio::task::spawn_blocking(move || bcrypt::verify(&otp_clone, &hash_clone))
-        .await
-        .map_err(|_| "task panicked")??;
+    let is_valid = hasher.verify(otp, &claims.otp_hash).await?;
 
     if !is_valid {
         return Err("invalid OTP".into());
@@ -109,7 +93,7 @@ pub async fn verify_otp(
     let payload = CreateUserPayload {
         username: claims.username,
         email: claims.email,
-        password: claims.password_hash, // already bcrypt-hashed in request_signup
+        password: claims.password_hash, // already hashed in request_signup
     };
 
     let user = repo.create_user(payload).await?;
@@ -125,6 +109,7 @@ pub async fn verify_otp(
 
 pub async fn login(
     repo: &dyn UserRepo,
+    hasher: &dyn PasswordHasher,
     email: &str,
     password: &str,
 ) -> ServiceResult<AuthUserResponse> {
@@ -133,12 +118,7 @@ pub async fn login(
         .await?
         .ok_or("invalid credentials")?;
 
-    let password_clone = password.to_string();
-    let hash_clone = user.password.clone();
-    let is_valid =
-        tokio::task::spawn_blocking(move || bcrypt::verify(&password_clone, &hash_clone))
-            .await
-            .map_err(|_| "task panicked")??;
+    let is_valid = hasher.verify(password, &user.password).await?;
 
     if !is_valid {
         return Err("invalid credentials".into());
@@ -163,16 +143,12 @@ pub async fn get_user_by_id(
 
 pub async fn update_user(
     repo: &dyn UserRepo,
+    hasher: &dyn PasswordHasher,
     user_id: Uuid,
     mut payload: UpdateUserPayload,
 ) -> ServiceResult<AuthUserResponse> {
     if let Some(ref plain) = payload.password {
-        let plain_clone = plain.clone();
-        payload.password = Some(
-            tokio::task::spawn_blocking(move || bcrypt::hash(&plain_clone, get_bcrypt_cost()))
-                .await
-                .map_err(|_| "task panicked")??,
-        );
+        payload.password = Some(hasher.hash(plain).await?);
     }
     let user = repo.update_user(user_id, payload).await?;
     let token = create_access_token(user.id)?;
@@ -194,6 +170,7 @@ mod tests {
     use super::*;
     use crate::mock::MockUserRepo;
     use crate::otp_store;
+    use crate::password_hasher::PlainTextHasher;
 
     // Helper to setup env vars
     fn setup_env() {
@@ -207,18 +184,18 @@ mod tests {
     async fn test_login_success() {
         setup_env();
         let repo = MockUserRepo::new();
+        let hasher = PlainTextHasher;
 
-        // Seed a user
+        // Seed a user with plain-text "password" (PlainTextHasher stores as-is)
         repo.create_user(CreateUserPayload {
             username: "testuser".into(),
             email: "test@example.com".into(),
-            password: bcrypt::hash("password123", get_bcrypt_cost()).unwrap(),
+            password: "password123".into(),
         })
         .await
         .unwrap();
 
-        // Attempt login
-        let response = login(&repo, "test@example.com", "password123")
+        let response = login(&repo, &hasher, "test@example.com", "password123")
             .await
             .unwrap();
         assert_eq!(response.user.email, "test@example.com");
@@ -230,15 +207,16 @@ mod tests {
     async fn test_login_invalid_password() {
         setup_env();
         let repo = MockUserRepo::new();
+        let hasher = PlainTextHasher;
         repo.create_user(CreateUserPayload {
             username: "testuser".into(),
             email: "test@example.com".into(),
-            password: bcrypt::hash("password123", get_bcrypt_cost()).unwrap(),
+            password: "password123".into(),
         })
         .await
         .unwrap();
 
-        let err = login(&repo, "test@example.com", "wrongpass")
+        let err = login(&repo, &hasher, "test@example.com", "wrongpass")
             .await
             .unwrap_err();
         assert_eq!(err.to_string(), "invalid credentials");
@@ -248,13 +226,14 @@ mod tests {
     async fn test_request_signup_success() {
         setup_env();
         let repo = MockUserRepo::new();
+        let hasher = PlainTextHasher;
         let payload = CreateUserPayload {
             username: "newuser".into(),
             email: "new@example.com".into(),
             password: "password123".into(),
         };
 
-        let token = request_signup(&repo, payload).await.unwrap();
+        let token = request_signup(&repo, &hasher, payload).await.unwrap();
         assert!(!token.is_empty());
     }
 
@@ -262,6 +241,7 @@ mod tests {
     async fn test_request_signup_duplicate_email() {
         setup_env();
         let repo = MockUserRepo::new();
+        let hasher = PlainTextHasher;
         repo.create_user(CreateUserPayload {
             username: "existing".into(),
             email: "dup@example.com".into(),
@@ -276,7 +256,7 @@ mod tests {
             password: "password123".into(),
         };
 
-        let err = request_signup(&repo, payload).await.unwrap_err();
+        let err = request_signup(&repo, &hasher, payload).await.unwrap_err();
         assert_eq!(err.to_string(), "email already registered");
     }
 
@@ -284,10 +264,12 @@ mod tests {
     async fn test_verify_otp_success() {
         setup_env();
         let repo = MockUserRepo::new();
+        let hasher = PlainTextHasher;
         let email = "otp@example.com";
 
         let pending_token = request_signup(
             &repo,
+            &hasher,
             CreateUserPayload {
                 username: "otpuser".into(),
                 email: email.into(),
@@ -304,7 +286,7 @@ mod tests {
             .expect("OTP should be in store")
             .otp;
 
-        let response = verify_otp(&repo, &pending_token, &stored_otp)
+        let response = verify_otp(&repo, &hasher, &pending_token, &stored_otp)
             .await
             .unwrap();
         assert_eq!(response.user.email, email);
@@ -319,10 +301,12 @@ mod tests {
     async fn test_verify_otp_invalid_code() {
         setup_env();
         let repo = MockUserRepo::new();
+        let hasher = PlainTextHasher;
         let email = "otp2@example.com";
 
         let pending_token = request_signup(
             &repo,
+            &hasher,
             CreateUserPayload {
                 username: "otpuser2".into(),
                 email: email.into(),
@@ -332,7 +316,7 @@ mod tests {
         .await
         .unwrap();
 
-        let err = verify_otp(&repo, &pending_token, "000000")
+        let err = verify_otp(&repo, &hasher, &pending_token, "000000")
             .await
             .unwrap_err();
         assert_eq!(err.to_string(), "invalid OTP");

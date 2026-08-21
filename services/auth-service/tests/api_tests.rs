@@ -8,6 +8,8 @@ use shared::deadpool_lapin::{Config, Runtime};
 use std::sync::Arc;
 use std::sync::OnceLock;
 
+use auth_service::password_hasher::PlainTextHasher;
+
 static PROMETHEUS_HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
 
 async fn setup_app() -> TestServer {
@@ -19,6 +21,7 @@ async fn setup_app() -> TestServer {
     let repo = Arc::new(MockUserRepo::new());
     let rabbit_cfg = Config::default();
     let rabbitmq = rabbit_cfg.create_pool(Some(Runtime::Tokio1)).unwrap();
+    let hasher = Arc::new(PlainTextHasher);
 
     let prometheus_handle = PROMETHEUS_HANDLE
         .get_or_init(|| {
@@ -32,6 +35,7 @@ async fn setup_app() -> TestServer {
         repo.clone(),
         repo,
         rabbitmq,
+        hasher,
         prometheus_handle,
     ));
 

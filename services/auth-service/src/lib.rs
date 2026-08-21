@@ -6,6 +6,7 @@ pub mod metrics;
 pub mod mock;
 pub mod models;
 pub mod otp_store;
+pub mod password_hasher;
 pub mod repo_trait;
 pub mod repository;
 pub mod routes;
