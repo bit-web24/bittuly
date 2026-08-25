@@ -17,6 +17,8 @@ tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 lapin = "2.5.0"
 deadpool-lapin = "0.12.1"
 metrics = "0.24"
+async-trait = "0.1"
+
 
 # OpenTelemetry Tracing
 opentelemetry = { version = "0.32", features = ["trace"] }
