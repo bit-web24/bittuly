@@ -166,10 +166,7 @@ pub async fn delete_user(
     match user_service::delete_user(&*state.repo, user_id).await {
         Ok(_) => {
             let payload = serde_json::json!({ "user_id": user_id }).to_string();
-            let _ = state
-                .rabbitmq
-                .publish("user_deleted_queue", payload.as_bytes())
-                .await;
+            let _ = state.publisher.publish("user_deleted_queue", payload.as_bytes()).await;
 
             StatusCode::NO_CONTENT.into_response()
         }
