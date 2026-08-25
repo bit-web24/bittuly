@@ -15,7 +15,7 @@ use uuid::Uuid;
 pub type CachedUrlResult = Option<(String, Option<DateTime<Utc>>)>;
 
 pub struct UrlState {
-    pub rabbitmq: shared::deadpool_lapin::Pool,
+    pub publisher: Arc<dyn shared::rabbitmq::EventPublisher>,
     /// Write pool — always the CNPG primary.
     pub repo: Arc<dyn UrlRepo>,
     /// Read pool — CNPG replica(s). Falls back to primary if replicas unavailable.
@@ -31,7 +31,7 @@ pub struct UrlState {
 
 impl UrlState {
     pub fn new(
-        rabbitmq: shared::deadpool_lapin::Pool,
+        publisher: Arc<dyn shared::rabbitmq::EventPublisher>,
         redis: RedisConn,
         repo: Arc<dyn UrlRepo>,
         read_repo: Arc<dyn UrlRepo>,
@@ -44,7 +44,7 @@ impl UrlState {
             .build();
 
         Self {
-            rabbitmq,
+            publisher,
             repo,
             read_repo,
             redis,

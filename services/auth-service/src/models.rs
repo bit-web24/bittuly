@@ -16,7 +16,7 @@ pub struct AuthState {
     pub repo: Arc<dyn UserRepo>,
     /// Read pool — CNPG replica(s). Falls back to primary if replicas unavailable.
     pub read_repo: Arc<dyn UserRepo>,
-    pub rabbitmq: shared::deadpool_lapin::Pool,
+    pub rabbitmq: Arc<dyn shared::rabbitmq::EventPublisher>,
     /// Strategy: handles password hashing/verification.
     /// Swapped out for a fast no-op hasher in tests.
     pub hasher: Arc<dyn PasswordHasher>,
@@ -30,14 +30,14 @@ impl AuthState {
     pub fn new(
         repo: Arc<dyn UserRepo>,
         read_repo: Arc<dyn UserRepo>,
-        rabbitmq: shared::deadpool_lapin::Pool,
+        publisher: Arc<dyn shared::rabbitmq::EventPublisher>,
         hasher: Arc<dyn PasswordHasher>,
         prometheus_handle: PrometheusHandle,
     ) -> Self {
         Self {
             repo,
             read_repo,
-            rabbitmq,
+            rabbitmq: publisher,
             hasher,
             started_at: Instant::now(),
             prometheus_handle,

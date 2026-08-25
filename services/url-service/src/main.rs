@@ -36,8 +36,9 @@ async fn main() {
 
     let pg_repo = Arc::new(repository::PgUrlRepo(db));
     let read_pg_repo = Arc::new(repository::PgUrlRepo(read_db));
+    let publisher = Arc::new(shared::rabbitmq::RabbitMqPublisher::new(rabbitmq));
     let url_state = Arc::new(models::UrlState::new(
-        rabbitmq,
+        publisher,
         redis,
         pg_repo,
         read_pg_repo,

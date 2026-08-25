@@ -178,36 +178,14 @@ pub async fn get_original_url(
             }
 
             // Publish click event asynchronously via RabbitMQ
-            let rabbitmq = state.rabbitmq.clone();
+            let publisher = state.publisher.clone();
             let short_code_clone = short_code.clone();
             tokio::spawn(async move {
-                if let Ok(conn) = rabbitmq.get().await
-                    && let Ok(channel) = conn.create_channel().await
+                if publisher
+                    .publish("click_events_queue", short_code_clone.as_bytes())
+                    .await
+                    .is_ok()
                 {
-                    use std::collections::HashMap;
-
-                    let mut carrier = HashMap::new();
-                    shared::telemetry::inject_context(&mut carrier);
-
-                    let mut amqp_headers = shared::lapin::types::FieldTable::default();
-                    for (k, v) in carrier {
-                        amqp_headers.insert(
-                            k.into(),
-                            shared::lapin::types::AMQPValue::LongString(v.into()),
-                        );
-                    }
-                    let props =
-                        shared::lapin::BasicProperties::default().with_headers(amqp_headers);
-
-                    let _ = channel
-                        .basic_publish(
-                            "",
-                            "click_events_queue",
-                            shared::lapin::options::BasicPublishOptions::default(),
-                            short_code_clone.as_bytes(),
-                            props,
-                        )
-                        .await;
                     metrics::counter!("rabbit_mq_events_published", "queue" => "click_events_queue")
                         .increment(1);
                 }

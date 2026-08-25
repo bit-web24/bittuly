@@ -19,8 +19,7 @@ async fn setup_app() -> TestServer {
     }
 
     let repo = Arc::new(MockUserRepo::new());
-    let rabbit_cfg = Config::default();
-    let rabbitmq = rabbit_cfg.create_pool(Some(Runtime::Tokio1)).unwrap();
+    let publisher = Arc::new(shared::rabbitmq::MockEventPublisher);
     let hasher = Arc::new(PlainTextHasher);
 
     let prometheus_handle = PROMETHEUS_HANDLE
@@ -34,7 +33,7 @@ async fn setup_app() -> TestServer {
     let auth_state = Arc::new(AuthState::new(
         repo.clone(),
         repo,
-        rabbitmq,
+        publisher,
         hasher,
         prometheus_handle,
     ));

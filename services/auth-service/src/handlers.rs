@@ -37,7 +37,14 @@ pub async fn login(
         return validation_error_response(errors).into_response();
     }
     // Route to read replica — login is a SELECT by email, safe for replicas.
-    match user_service::login(&*state.read_repo, state.hasher.as_ref(), &payload.email, &payload.password).await {
+    match user_service::login(
+        &*state.read_repo,
+        state.hasher.as_ref(),
+        &payload.email,
+        &payload.password,
+    )
+    .await
+    {
         Ok(auth) => {
             let mut response = (StatusCode::OK, Json(auth.user)).into_response();
             if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {
@@ -158,36 +165,11 @@ pub async fn delete_user(
 
     match user_service::delete_user(&*state.repo, user_id).await {
         Ok(_) => {
-            // Publish to RabbitMQ
             let payload = serde_json::json!({ "user_id": user_id }).to_string();
-            if let Ok(conn) = state.rabbitmq.get().await
-                && let Ok(channel) = conn.create_channel().await
-            {
-                use std::collections::HashMap;
-
-                let mut carrier = HashMap::new();
-                shared::telemetry::inject_context(&mut carrier);
-
-                // Convert carrier to AMQP headers
-                let mut amqp_headers = shared::lapin::types::FieldTable::default();
-                for (k, v) in carrier {
-                    amqp_headers.insert(
-                        k.into(),
-                        shared::lapin::types::AMQPValue::LongString(v.into()),
-                    );
-                }
-                let props = shared::lapin::BasicProperties::default().with_headers(amqp_headers);
-
-                let _ = channel
-                    .basic_publish(
-                        "", // default exchange
-                        "user_deleted_queue",
-                        shared::lapin::options::BasicPublishOptions::default(),
-                        payload.as_bytes(),
-                        props,
-                    )
-                    .await;
-            }
+            let _ = state
+                .rabbitmq
+                .publish("user_deleted_queue", payload.as_bytes())
+                .await;
 
             StatusCode::NO_CONTENT.into_response()
         }
@@ -242,7 +224,14 @@ pub async fn verify_otp_handler(
     if let Err(errors) = payload.validate() {
         return (StatusCode::UNPROCESSABLE_ENTITY, Json(errors.to_string())).into_response();
     }
-    match user_service::verify_otp(&*state.repo, state.hasher.as_ref(), &payload.pending_token, &payload.otp).await {
+    match user_service::verify_otp(
+        &*state.repo,
+        state.hasher.as_ref(),
+        &payload.pending_token,
+        &payload.otp,
+    )
+    .await
+    {
         Ok(auth) => {
             let mut response = (StatusCode::CREATED, Json(auth.user)).into_response();
             if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {

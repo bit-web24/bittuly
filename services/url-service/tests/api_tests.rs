@@ -19,8 +19,7 @@ async fn setup_app() -> TestServer {
     }
 
     let repo = Arc::new(MockUrlRepo::new());
-    let rabbit_cfg = Config::default();
-    let rabbitmq = rabbit_cfg.create_pool(Some(Runtime::Tokio1)).unwrap();
+    let publisher = Arc::new(shared::rabbitmq::MockEventPublisher);
     let redis = shared::redis::init_redis("redis://127.0.0.1")
         .await
         .unwrap();
@@ -34,7 +33,7 @@ async fn setup_app() -> TestServer {
         .clone();
 
     let state = Arc::new(UrlState::new(
-        rabbitmq,
+        publisher,
         redis,
         repo.clone(),
         repo,
