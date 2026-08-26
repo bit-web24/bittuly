@@ -9,6 +9,26 @@ use serde_json::json;
 use shared::jwt::{Claims, clear_token_cookies, set_token_cookies};
 use uuid::Uuid;
 use validator::{Validate, ValidationErrors};
+use crate::models::AuthUserResponse;
+
+/// Template Method pattern via Axum's IntoResponse trait.
+/// Defines the invariant skeleton of setting tokens/cookies,
+/// while allowing the caller to specify the HTTP status code and payload.
+pub struct AuthSuccess {
+    pub status: StatusCode,
+    pub auth: AuthUserResponse,
+}
+
+impl IntoResponse for AuthSuccess {
+    fn into_response(self) -> axum::response::Response {
+        let mut response = (self.status, Json(self.auth.user)).into_response();
+        if let Err(e) = set_token_cookies(&mut response, &self.auth.token, &self.auth.refresh_token) {
+            tracing::error!("set_token_cookies: {:?}", e);
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+        response
+    }
+}
 
 /// Convert validator errors to a structured JSON-serializable map.
 fn validation_error_response(errors: ValidationErrors) -> impl IntoResponse {
@@ -45,14 +65,11 @@ pub async fn login(
     )
     .await
     {
-        Ok(auth) => {
-            let mut response = (StatusCode::OK, Json(auth.user)).into_response();
-            if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {
-                tracing::error!("set_token_cookies: {:?}", e);
-                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            }
-            response
+        Ok(auth) => AuthSuccess {
+            status: StatusCode::OK,
+            auth,
         }
+        .into_response(),
         // Distinguish authentication failures from infrastructure failures
         Err(err)
             if err.to_string().contains("invalid credentials")
@@ -130,14 +147,11 @@ pub async fn update_user(
     }
 
     match user_service::update_user(&*state.repo, state.hasher.as_ref(), user_id, payload).await {
-        Ok(auth) => {
-            let mut response = (StatusCode::OK, Json(auth.user)).into_response();
-            if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {
-                tracing::error!("set_token_cookies: {:?}", e);
-                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            }
-            response
+        Ok(auth) => AuthSuccess {
+            status: StatusCode::OK,
+            auth,
         }
+        .into_response(),
         Err(err) => {
             tracing::error!("update_user DB error: {:?}", err);
             (
@@ -229,14 +243,11 @@ pub async fn verify_otp_handler(
     )
     .await
     {
-        Ok(auth) => {
-            let mut response = (StatusCode::CREATED, Json(auth.user)).into_response();
-            if let Err(e) = set_token_cookies(&mut response, &auth.token, &auth.refresh_token) {
-                tracing::error!("set_token_cookies: {:?}", e);
-                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            }
-            response
+        Ok(auth) => AuthSuccess {
+            status: StatusCode::CREATED,
+            auth,
         }
+        .into_response(),
         Err(err) if err.to_string() == "invalid OTP" => (
             StatusCode::UNAUTHORIZED,
             Json(json!({ "error": "invalid or expired OTP" })),
