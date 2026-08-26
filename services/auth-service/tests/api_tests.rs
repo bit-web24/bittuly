@@ -32,7 +32,6 @@ async fn setup_app() -> TestServer {
 
     let auth_state = Arc::new(AuthState::new(
         repo.clone(),
-        repo,
         publisher,
         hasher,
         prometheus_handle,

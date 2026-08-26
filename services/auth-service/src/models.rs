@@ -12,10 +12,8 @@ use uuid::Uuid;
 use validator::Validate;
 
 pub struct AuthState {
-    /// Write pool — always the CNPG primary.
+    /// Unified read/write pool.
     pub repo: Arc<dyn UserRepo>,
-    /// Read pool — CNPG replica(s). Falls back to primary if replicas unavailable.
-    pub read_repo: Arc<dyn UserRepo>,
     pub publisher: Arc<dyn shared::rabbitmq::EventPublisher>,
     /// Strategy: handles password hashing/verification.
     /// Swapped out for a fast no-op hasher in tests.
@@ -29,14 +27,12 @@ pub struct AuthState {
 impl AuthState {
     pub fn new(
         repo: Arc<dyn UserRepo>,
-        read_repo: Arc<dyn UserRepo>,
         publisher: Arc<dyn shared::rabbitmq::EventPublisher>,
         hasher: Arc<dyn PasswordHasher>,
         prometheus_handle: PrometheusHandle,
     ) -> Self {
         Self {
             repo,
-            read_repo,
             publisher,
             hasher,
             started_at: Instant::now(),

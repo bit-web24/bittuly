@@ -6,6 +6,46 @@ use uuid::Uuid;
 
 pub struct PgUserRepo(pub DbPool);
 
+pub struct SplitUserRepo {
+    pub primary: std::sync::Arc<dyn UserRepo>,
+    pub replica: std::sync::Arc<dyn UserRepo>,
+}
+
+#[async_trait]
+impl UserRepo for SplitUserRepo {
+    async fn create_user(&self, payload: CreateUserPayload) -> Result<User, sqlx::Error> {
+        self.primary.create_user(payload).await
+    }
+
+    async fn get_user_by_id(&self, user_id: Uuid) -> Result<Option<User>, sqlx::Error> {
+        self.replica.get_user_by_id(user_id).await
+    }
+
+    async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, sqlx::Error> {
+        self.replica.get_user_by_email(email).await
+    }
+
+    async fn update_user(
+        &self,
+        user_id: Uuid,
+        payload: UpdateUserPayload,
+    ) -> Result<User, sqlx::Error> {
+        self.primary.update_user(user_id, payload).await
+    }
+
+    async fn delete_user(&self, user_id: Uuid) -> Result<(), sqlx::Error> {
+        self.primary.delete_user(user_id).await
+    }
+
+    async fn ping(&self) -> Result<(), sqlx::Error> {
+        self.primary.ping().await?;
+        // Ignore replica ping failures to keep the primary up?
+        // Usually you'd check both, or just primary. 
+        self.replica.ping().await.ok();
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl UserRepo for PgUserRepo {
     async fn create_user(&self, payload: CreateUserPayload) -> Result<User, sqlx::Error> {

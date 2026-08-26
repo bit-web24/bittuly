@@ -16,10 +16,8 @@ pub type CachedUrlResult = Option<(String, Option<DateTime<Utc>>)>;
 
 pub struct UrlState {
     pub publisher: Arc<dyn shared::rabbitmq::EventPublisher>,
-    /// Write pool — always the CNPG primary.
+    /// Unified read/write pool.
     pub repo: Arc<dyn UrlRepo>,
-    /// Read pool — CNPG replica(s). Falls back to primary if replicas unavailable.
-    pub read_repo: Arc<dyn UrlRepo>,
     pub redis: RedisConn,
     #[allow(dead_code)]
     pub started_at: Instant,
@@ -34,7 +32,6 @@ impl UrlState {
         publisher: Arc<dyn shared::rabbitmq::EventPublisher>,
         redis: RedisConn,
         repo: Arc<dyn UrlRepo>,
-        read_repo: Arc<dyn UrlRepo>,
         cors_origin: String,
         prometheus_handle: PrometheusHandle,
     ) -> Self {
@@ -46,7 +43,6 @@ impl UrlState {
         Self {
             publisher,
             repo,
-            read_repo,
             redis,
             started_at: Instant::now(),
             cors_origin,

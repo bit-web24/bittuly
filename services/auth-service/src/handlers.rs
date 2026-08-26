@@ -58,7 +58,7 @@ pub async fn login(
     }
     // Route to read replica — login is a SELECT by email, safe for replicas.
     match user_service::login(
-        &*state.read_repo,
+        &*state.repo,
         state.hasher.as_ref(),
         &payload.email,
         &payload.password,
@@ -109,7 +109,7 @@ pub async fn get_user_by_id(
     }
 
     // Route to read replica — SELECT by id (PK), safe for replicas.
-    match user_service::get_user_by_id(&*state.read_repo, user_id).await {
+    match user_service::get_user_by_id(&*state.repo, user_id).await {
         Ok(Some(user)) => (StatusCode::OK, Json(user)).into_response(),
         Ok(None) => (
             StatusCode::NOT_FOUND,

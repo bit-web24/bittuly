@@ -14,6 +14,50 @@ pub struct UrlsPage {
 
 pub struct PgUrlRepo(pub DbPool);
 
+pub struct SplitUrlRepo {
+    pub primary: std::sync::Arc<dyn UrlRepo>,
+    pub replica: std::sync::Arc<dyn UrlRepo>,
+}
+
+#[async_trait]
+impl UrlRepo for SplitUrlRepo {
+    async fn add_shorten_url(
+        &self,
+        original_url: &str,
+        user_id: Uuid,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<Option<Url>, sqlx::Error> {
+        self.primary.add_shorten_url(original_url, user_id, expires_at).await
+    }
+
+    async fn get_original_url(
+        &self,
+        short_code: &str,
+    ) -> Result<Option<(String, Option<DateTime<Utc>>)>, sqlx::Error> {
+        self.replica.get_original_url(short_code).await
+    }
+
+    async fn get_urls_page(
+        &self,
+        user_id: Uuid,
+        cursor: Option<i64>,
+        limit: i64,
+        search: Option<String>,
+    ) -> Result<UrlsPage, sqlx::Error> {
+        self.replica.get_urls_page(user_id, cursor, limit, search).await
+    }
+
+    async fn delete_url(&self, url_id: i64, user_id: Uuid) -> Result<Option<String>, sqlx::Error> {
+        self.primary.delete_url(url_id, user_id).await
+    }
+
+    async fn ping(&self) -> Result<(), sqlx::Error> {
+        self.primary.ping().await?;
+        self.replica.ping().await.ok();
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl UrlRepo for PgUrlRepo {
     async fn add_shorten_url(

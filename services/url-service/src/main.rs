@@ -36,12 +36,16 @@ async fn main() {
 
     let pg_repo = Arc::new(repository::PgUrlRepo(db));
     let read_pg_repo = Arc::new(repository::PgUrlRepo(read_db));
+    let split_repo = Arc::new(repository::SplitUrlRepo {
+        primary: pg_repo,
+        replica: read_pg_repo,
+    });
+    
     let publisher = Arc::new(shared::rabbitmq::RabbitMqPublisher::new(rabbitmq));
     let url_state = Arc::new(models::UrlState::new(
         publisher,
         redis,
-        pg_repo,
-        read_pg_repo,
+        split_repo,
         settings.cors_origin.clone(),
         prometheus_handle,
     ));

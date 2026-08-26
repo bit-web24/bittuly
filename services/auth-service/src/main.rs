@@ -33,11 +33,15 @@ async fn main() {
 
     let pg_repo = Arc::new(repository::PgUserRepo(db));
     let read_pg_repo = Arc::new(repository::PgUserRepo(read_db));
+    let split_repo = Arc::new(repository::SplitUserRepo {
+        primary: pg_repo,
+        replica: read_pg_repo,
+    });
+    
     let hasher = Arc::new(password_hasher::BcryptHasher::from_mode(&settings.mode));
     let publisher = Arc::new(shared::rabbitmq::RabbitMqPublisher::new(rabbitmq));
     let auth_state = Arc::new(models::AuthState::new(
-        pg_repo,
-        read_pg_repo,
+        split_repo,
         publisher,
         hasher,
         prometheus_handle,
